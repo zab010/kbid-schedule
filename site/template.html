@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>입찰공고 현장 일정</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='5' width='26' height='24' rx='4' fill='%232f6fdb'/%3E%3Crect x='3' y='5' width='26' height='7' rx='3' fill='%231d4fa8'/%3E%3Ccircle cx='16' cy='20' r='4' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f4f6f9; --card:#ffffff; --ink:#1b2330; --sub:#5b6676; --line:#e2e6ec;
+  --accent:#2f6fdb; --accent-ink:#ffffff; --soft:#eaf1fd; --warn:#9a5b00; --warn-bg:#fff5e0;
+  --today:#e8f6ee; --today-ink:#17753f;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12161c; --card:#1b212a; --ink:#e6eaf0; --sub:#9aa5b4; --line:#2c3440;
+    --accent:#6c9cf0; --accent-ink:#0f1520; --soft:#1f2b3f; --warn:#f0b75a; --warn-bg:#2e2616;
+    --today:#16301f; --today-ink:#7fd6a0;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12161c; --card:#1b212a; --ink:#e6eaf0; --sub:#9aa5b4; --line:#2c3440;
+  --accent:#6c9cf0; --accent-ink:#0f1520; --soft:#1f2b3f; --warn:#f0b75a; --warn-bg:#2e2616;
+  --today:#16301f; --today-ink:#7fd6a0;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;word-break:keep-all}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--sub);font-size:13px}
+.notice{background:var(--warn-bg);color:var(--ink);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;font-size:13px;margin:14px 0}
+.notice b{color:var(--warn)}
+/* 잠금 화면 */
+#lock{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+#lock form{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px 24px;width:100%;max-width:340px;text-align:center}
+#lock h1{font-size:19px;margin-bottom:6px}
+#lock input{width:100%;font-size:20px;letter-spacing:.3em;text-align:center;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);margin:16px 0 10px}
+#lock button,.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer;width:100%}
+#err{color:#d33;font-size:13px;min-height:1.4em}
+#app{display:none}
+/* 도구줄 */
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+.tools input[type=search]{flex:1 1 240px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:15px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.count{color:var(--sub);font-size:13px;margin-left:auto}
+/* 날짜 묶음 */
+.day{margin-top:22px}
+.day h2{font-size:16px;margin:0 0 8px;display:flex;gap:8px;align-items:center}
+.day h2 .n{color:var(--sub);font-weight:400;font-size:13px}
+.tag{font-size:12px;border-radius:6px;padding:1px 7px;background:var(--today);color:var(--today-ink);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.card .t{font-weight:600}
+.card .m{color:var(--sub);font-size:13px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 14px}
+.addr{margin-top:8px;background:var(--soft);border-radius:8px;padding:8px 10px;font-size:14px}
+.addr .k{font-size:12px;color:var(--sub);display:block}
+.addr.none{color:var(--sub)}
+.addr ol{margin:2px 0 0;padding-left:20px}
+.links{margin-top:6px;font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
+.links a{color:var(--accent)}
+.empty{color:var(--sub);text-align:center;padding:40px 0}
+footer{margin-top:36px;border-top:1px solid var(--line);padding-top:14px;color:var(--sub);font-size:12px}
+footer h3{font-size:13px;color:var(--ink);margin:0 0 6px}
+footer p{margin:0 0 6px}
+</style>
+</head>
+<body>
+<div id="lock">
+  <form id="f" autocomplete="off">
+    <h1>입찰공고 현장 일정</h1>
+    <div class="sub">비밀번호를 입력하세요</div>
+    <input id="pw" type="password" inputmode="numeric" aria-label="비밀번호" autofocus>
+    <div id="err"></div>
+    <button type="submit">열기</button>
+    <div class="notice" style="text-align:left;margin-top:18px">본 페이지는 <b>비영리·비상업적</b> 업무 참고용입니다.</div>
+  </form>
+</div>
+
+<div id="app" class="wrap">
+  <h1>입찰공고 현장 일정</h1>
+  <div class="sub" id="meta"></div>
+  <div class="notice"><b>비상업적 이용 안내</b> · 이 페이지는 영리 목적이 아닌 업무 참고용으로만 운영됩니다. 입찰 참여 전 반드시 공고 원문을 확인하세요.</div>
+
+  <div class="tools">
+    <input type="search" id="q" placeholder="공고명·기관·주소 검색" aria-label="검색">
+    <span class="count" id="count"></span>
+  </div>
+  <div class="chips" id="regions" aria-label="지역"></div>
+  <div id="list"></div>
+
+  <footer>
+    <h3>비상업적 이용 및 면책 고지</h3>
+    <p>1. 본 페이지는 개인 및 소속 업무의 내부 참고를 위한 <b>비영리·비상업적</b> 목적으로만 운영되며, 판매·광고·유료 제공 등 어떠한 영리 목적으로도 이용하지 않고 이용료를 받지 않습니다.</p>
+    <p>2. 게재된 내용은 발주기관이 공개한 입찰공고 원문(나라장터 등 공공 조달 시스템에 게시된 공고문 및 첨부서류)에서 공고명, 일정, 공사 현장 위치 등 사실 정보만을 발췌·정리한 것입니다. 원문 및 원 자료에 대한 저작권과 모든 권리는 해당 발주기관과 원 정보 제공자에게 있습니다.</p>
+    <p>3. 자동으로 발췌한 정보이므로 오류나 누락이 있을 수 있으며, 정확성·완전성을 보증하지 않습니다. 본 페이지의 정보를 이용해 발생한 결과에 대해 운영자는 책임을 지지 않으며, 입찰 참여 전 반드시 공고 원문을 직접 확인하시기 바랍니다.</p>
+    <p>4. 본 페이지의 내용을 무단으로 복제·배포하거나 상업적으로 이용할 수 없습니다.</p>
+    <p>5. 권리자 또는 정보 제공자가 게시 중단이나 삭제를 요청하면 지체 없이 해당 내용을 삭제합니다.</p>
+  </footer>
+</div>
+
+<script>
+const PAYLOAD = __PAYLOAD__;
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function unlock(pw){
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:b64(PAYLOAD.salt), iterations:PAYLOAD.iter, hash:"SHA-256"},
+    base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64(PAYLOAD.iv)}, key, b64(PAYLOAD.data));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+const store = {
+  get(k){ try{ return sessionStorage.getItem(k) }catch(e){ return null } },
+  set(k,v){ try{ sessionStorage.setItem(k,v) }catch(e){} },
+};
+async function tryOpen(pw, quiet){
+  try{
+    const data = await unlock(pw);
+    store.set("kbid-pw", pw);
+    document.getElementById("lock").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    render(data);
+  }catch(e){
+    if(!quiet){
+      document.getElementById("err").textContent = "비밀번호가 맞지 않습니다.";
+      document.getElementById("pw").select();
+    }
+  }
+}
+document.getElementById("f").addEventListener("submit", e => {
+  e.preventDefault();
+  tryOpen(document.getElementById("pw").value, false);
+});
+const saved = store.get("kbid-pw");
+if(saved) tryOpen(saved, true);
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const WD = "일월화수목금토";
+function dayLabel(d){
+  const [y,m,dd] = d.split("-").map(Number);
+  return `${m}월 ${dd}일 (${WD[new Date(Date.UTC(y,m-1,dd)).getUTCDay()]})`;
+}
+function todayKST(){
+  return new Date(Date.now() + 9*3600e3).toISOString().slice(0,10);
+}
+const SIDO = [["서울","서울"],["부산","부산"],["대구","대구"],["인천","인천"],["광주","광주"],["대전","대전"],["울산","울산"],["세종","세종"],["경기","경기"],["강원","강원"],["충청북","충북"],["충북","충북"],["충청남","충남"],["충남","충남"],["전라북","전북"],["전북","전북"],["전라남","전남"],["전남","전남"],["경상북","경북"],["경북","경북"],["경상남","경남"],["경남","경남"],["제주","제주"]];
+function region(n){
+  for(const a of [(n.addresses||[])[0], n.region]){
+    for(const [k,v] of SIDO) if((a||"").startsWith(k)) return v;
+  }
+  return "기타";
+}
+
+let DATA, REGION = "전체";
+function render(data){
+  DATA = data;
+  document.getElementById("meta").textContent =
+    `${data.range_from} ~ ${data.range_to} · 공고 ${data.notices.length}건 · 마지막 갱신 ${data.updated} (한국 시간)`;
+  const counts = {};
+  data.notices.forEach(n => { const r = region(n); counts[r] = (counts[r]||0)+1; });
+  const regs = ["전체", ...Object.keys(counts).sort((a,b)=>counts[b]-counts[a])];
+  const box = document.getElementById("regions");
+  box.innerHTML = regs.map(r => `<button class="chip" aria-pressed="${r===REGION}" data-r="${esc(r)}">${esc(r)}${r==="전체"?"":" "+counts[r]}</button>`).join("");
+  box.onclick = e => {
+    const b = e.target.closest(".chip"); if(!b) return;
+    REGION = b.dataset.r;
+    box.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.r===REGION));
+    draw();
+  };
+  document.getElementById("q").oninput = draw;
+  draw();
+}
+function draw(){
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const today = todayKST();
+  const items = DATA.notices.filter(n => {
+    if(REGION !== "전체" && region(n) !== REGION) return false;
+    if(!q) return true;
+    return [n.title,n.agency,n.no,(n.addresses||[]).join(" ")].join(" ").toLowerCase().includes(q);
+  });
+  document.getElementById("count").textContent = `${items.length}건`;
+  const byDay = {};
+  items.forEach(n => (byDay[n.date] ||= []).push(n));
+  const days = Object.keys(byDay).sort();
+  const el = document.getElementById("list");
+  if(!days.length){ el.innerHTML = `<div class="empty">조건에 맞는 공고가 없습니다.</div>`; return; }
+  el.innerHTML = days.map(d => `
+    <section class="day">
+      <h2>${dayLabel(d)} ${d===today?'<span class="tag">오늘</span>':''}<span class="n">${byDay[d].length}건</span></h2>
+      ${byDay[d].map(card).join("")}
+    </section>`).join("");
+}
+function card(n){
+  const addrs = n.addresses || [];
+  const addr = addrs.length
+    ? `<div class="addr"><span class="k">현장 주소${n.address_key?` · 원문 「${esc(n.address_key)}」 항목`:""}${n.address_file?` (${esc(n.address_file)})`:""}</span>${
+        addrs.length===1 ? esc(addrs[0]) : `<ol>${addrs.map(a=>`<li>${esc(a)}</li>`).join("")}</ol>`}</div>`
+    : `<div class="addr none"><span class="k">현장 주소</span>원문에서 현장 주소를 찾지 못했습니다${n.region?` (공고 지역: ${esc(n.region)})`:""}. 원문을 확인하세요.</div>`;
+  const hm = s => (s||"").slice(5,16).replace("-","/");
+  const meta = [n.agency && `공고 ${esc(n.agency)}`, n.demand && n.demand!==n.agency && `수요 ${esc(n.demand)}`,
+                n.no && `공고번호 ${esc(n.no)}`, n.deadline && `투찰마감 ${esc(hm(n.deadline))}`,
+                n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
+                n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
+  const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
+  return `<article class="card"><div class="t">${esc(n.title)}</div>
+    <div class="m"><span>${meta}</span></div>${addr}${links?`<div class="links">${links}</div>`:""}</article>`;
+}
+</script>
+</body>
+</html>

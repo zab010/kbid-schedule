@@ -1,0 +1,7 @@
+requests
+beautifulsoup4
+lxml
+cryptography
+pypdf
+olefile
+pyhwp
