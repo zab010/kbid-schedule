@@ -29,7 +29,9 @@ jobs:
       # 공고별로 찾은 주소를 저장해 두어 다음 날 원문을 다시 받지 않는다 (저장소에는 올라가지 않음)
       - uses: actions/cache@v4
         with:
-          path: data/cache.json
+          path: |
+            data/cache.json
+            data/geo.json
           key: notice-cache-${{ github.run_id }}
           restore-keys: notice-cache-
 
@@ -38,6 +40,8 @@ jobs:
           KBID_ID: ${{ secrets.KBID_ID }}
           KBID_PW: ${{ secrets.KBID_PW }}
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}   # 현장 주소 → 좌표
+          KAKAO_JS_KEY: ${{ vars.KAKAO_JS_KEY }}          # 사이트의 출발지 주소 찾기 (도메인 제한 키라 공개돼도 됨)
           TZ: Asia/Seoul
         run: python run.py
 

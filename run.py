@@ -8,10 +8,12 @@ from pathlib import Path
 from kbid.address import file_text, find_site_addresses
 from kbid.build_site import build
 from kbid.dates import extract_dates
+from kbid.geo import geocode
 from kbid.scrape import Kbid
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / "data" / "cache.json"
+GEO_CACHE = ROOT / "data" / "geo.json"  # 주소 → 좌표 (Actions 캐시, 저장소엔 안 올림)
 DAYS = 31  # 오늘 포함 한 달
 KST = timezone(timedelta(hours=9))
 
@@ -64,6 +66,32 @@ def site_addresses(kb, det, texts):
             if _specific(best):
                 break
     return best, src
+
+
+def add_coords(notices):
+    """현장 주소(첫 번째)를 카카오 API로 좌표로 바꿔 notice['geo'] 에 넣는다. 키가 없으면 건너뛴다."""
+    key = os.environ.get("KAKAO_REST_KEY")
+    if not key:
+        print("KAKAO_REST_KEY 없음 — 좌표 찾기 건너뜀")
+        return
+    geo = json.loads(GEO_CACHE.read_text(encoding="utf-8")) if GEO_CACHE.exists() else {}
+    for n in notices:
+        if not n["addresses"]:
+            continue
+        a = n["addresses"][0]
+        if a not in geo:
+            try:
+                g = geocode(a, key)
+            except Exception as e:
+                print(f"  ! 좌표 찾기 실패 {a}: {e}")
+                continue
+            if not g:
+                print(f"  좌표 못 찾음: {a}")
+                continue
+            geo[a] = g
+        n["geo"] = geo[a]
+    GEO_CACHE.write_text(json.dumps(geo, ensure_ascii=False), encoding="utf-8")
+    print(f"좌표: {sum(1 for n in notices if n.get('geo'))}건 / 주소 있는 공고 {sum(1 for n in notices if n['addresses'])}건")
 
 
 def main():
@@ -124,6 +152,7 @@ def main():
 
     CACHE.parent.mkdir(exist_ok=True)
     CACHE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    add_coords(notices)
     data = {
         "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
         "range_from": today.isoformat(),

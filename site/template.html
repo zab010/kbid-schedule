@@ -100,6 +100,19 @@ h1{font-size:22px;margin:0 0 4px}
 .cal-legend{font-size:12px;color:var(--sub);padding:8px 10px}
 .dayhead{font-size:16px;font-weight:700;margin:0 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dayhead .n{color:var(--sub);font-weight:400;font-size:13px}
+/* 출발지·거리 */
+.origin[hidden]{display:none}
+.origin{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13px}
+.origin .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.origin input{flex:1 1 220px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px}
+.origin select{padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:13px}
+.origin .st{color:var(--sub);margin-top:6px;min-height:1.2em}
+.origin .st b{color:var(--ink)}
+.origin .st.bad{color:#d33}
+.origin .opts{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.trip{margin-top:6px;font-size:13px;display:flex;gap:4px 12px;flex-wrap:wrap;align-items:baseline}
+.trip b{font-size:14px}
+.trip .s{color:var(--sub)}
 /* 지금 갱신 */
 .head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .head > div{min-width:0}
@@ -166,6 +179,19 @@ footer p{margin:0 0 6px}
   </div>
   <div class="chips" id="tabs" aria-label="맞춤스케줄러 탭"></div>
   <div class="chips" id="regions" aria-label="지역"></div>
+  <div class="origin" id="origin">
+    <div class="row">
+      <input id="og-q" placeholder="출발지 주소나 장소 (예: 대전시청, 유성구 대학로 99)" aria-label="출발지">
+      <button class="btn2 solid" id="og-go" type="button">거리 계산</button>
+      <button class="btn2" id="og-here" type="button">현재 위치</button>
+      <button class="btn2" id="og-clear" type="button" hidden>지우기</button>
+    </div>
+    <div class="st" id="og-st">출발지를 넣으면 공고 현장까지 거리와 자동차 예상 이동시간이 나옵니다. (이 브라우저에만 저장)</div>
+    <div class="opts" id="og-opts" hidden>
+      <label>정렬 <select id="og-sort"><option value="time">마감 시간순</option><option value="near">가까운 순</option></select></label>
+      <label>이동시간 <select id="og-max"><option value="0">전체</option><option value="30">30분 이내</option><option value="60">1시간 이내</option><option value="90">1시간 30분 이내</option><option value="120">2시간 이내</option><option value="180">3시간 이내</option></select></label>
+    </div>
+  </div>
   <div class="viewbar chips" id="views" aria-label="보기 방식">
     <button class="chip" data-v="cal" aria-pressed="true">달력</button>
     <button class="chip" data-v="list" aria-pressed="false">목록</button>
@@ -269,12 +295,18 @@ function render(data){
     `${data.range_from} ~ ${data.range_to} · 공고 ${data.notices.length}건 · 마지막 갱신 ${data.updated} (한국 시간)`;
   document.getElementById("q").oninput = draw;
   drawTabs();
+  // 현장 좌표가 하나도 없으면(카카오 키 설정 전) 출발지 칸을 숨긴다
+  $("origin").hidden = !data.notices.some(n => n.geo);
+  if($("origin").hidden) ORIGIN = null;
+  ogStatus();
+  if(ORIGIN) computeTrips();
 }
 function draw(){
   const q = document.getElementById("q").value.trim().toLowerCase();
   const today = todayKST();
   const items = DATA.notices.filter(n => {
     if(!inTab(n)) return false;
+    if(!withinMax(n)) return false;
     if(REGION !== "전체" && region(n) !== REGION) return false;
     if(!q) return true;
     return [n.title,n.agency,n.no,(n.addresses||[]).join(" ")].join(" ").toLowerCase().includes(q);
@@ -282,6 +314,7 @@ function draw(){
   document.getElementById("count").textContent = `${items.length}건`;
   const byDay = {};
   items.forEach(n => (byDay[n.date] ||= []).push(n));
+  if(ORIGIN && SORT === "near") Object.values(byDay).forEach(l => l.sort((a,b) => tripKey(a) - tripKey(b)));
   const days = Object.keys(byDay).sort();
   $("calview").hidden = VIEW !== "cal";
   $("list").hidden = VIEW !== "list";
@@ -367,6 +400,123 @@ function datesBox(n){
   return `<div class="dates">${DATE_KEYS.map(k =>
     `<div class="${k==="투찰마감일시"?"main":""}"><span class="k">${k}</span>${fmtDate(n.dates[k])}</div>`).join("")}</div>`;
 }
+/* ── 출발지에서 거리·이동시간 ──
+   현장 좌표(n.geo)는 수집 때 카카오 API로 찾아 둔 것. 도로 거리·시간은 OSRM(오픈스트리트맵) 경로 계산 — 교통상황 미반영 평균 추정 */
+const KAKAO_JS_KEY = "__KAKAO_JS_KEY__";
+let ORIGIN = null, TRIPS = new Map(), SORT = "time", MAXMIN = 0;
+try{ ORIGIN = JSON.parse(localStorage.getItem("kbid-origin") || "null"); }catch(e){}
+function haversine(a, b){
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const gkey = g => `${g.lon.toFixed(5)},${g.lat.toFixed(5)}`;
+const fmtKm = km => km < 10 ? km.toFixed(1) + "km" : Math.round(km) + "km";
+const fmtMin = s => { const m = Math.round(s/60); return m < 60 ? `${m}분` : `${Math.floor(m/60)}시간${m%60?" "+m%60+"분":""}`; };
+function tripKey(n){
+  if(!ORIGIN || !n.geo) return Infinity;
+  const t = TRIPS.get(gkey(n.geo));
+  return t ? t.dur : haversine(ORIGIN, n.geo) * 60;  // 경로 계산 전에는 직선거리로 대략
+}
+function withinMax(n){
+  if(!ORIGIN || !MAXMIN) return true;
+  const t = n.geo && TRIPS.get(gkey(n.geo));
+  return !!t && t.dur <= MAXMIN * 60;
+}
+function tripLine(n){
+  if(!ORIGIN) return "";
+  if(!n.geo) return `<div class="trip"><span class="s">현장 위치를 찾지 못해 거리를 계산할 수 없습니다</span></div>`;
+  const line = haversine(ORIGIN, n.geo), t = TRIPS.get(gkey(n.geo));
+  const rough = n.geo.level !== "addr" ? ` · 대략 위치(${esc(n.geo.q)})` : "";
+  const road = t ? `<b>자동차 약 ${fmtMin(t.dur)}</b><span>도로 ${fmtKm(t.dist/1000)}</span>`
+                 : `<span class="s">${TRIP_STATE === "busy" ? "이동시간 계산 중…" : "이동시간 계산 못 함"}</span>`;
+  return `<div class="trip">${road}<span class="s">직선 ${fmtKm(line)}${rough}</span></div>`;
+}
+let TRIP_STATE = "";
+async function computeTrips(){
+  TRIPS = new Map();
+  if(!ORIGIN) return;
+  const dests = [...new Map(DATA.notices.filter(n => n.geo).map(n => [gkey(n.geo), n.geo])).values()];
+  TRIP_STATE = "busy"; draw();
+  const o = `${ORIGIN.lon.toFixed(5)},${ORIGIN.lat.toFixed(5)}`;
+  let fail = 0;
+  for(let i = 0; i < dests.length; i += 80){
+    const part = dests.slice(i, i + 80);
+    const url = `https://router.project-osrm.org/table/v1/driving/${o};${part.map(gkey).join(";")}?sources=0&annotations=duration,distance`;
+    try{
+      const j = await (await fetch(url)).json();
+      if(j.code !== "Ok") throw new Error(j.code);
+      part.forEach((g, k) => {
+        const dur = j.durations[0][k+1], dist = j.distances[0][k+1];
+        if(dur != null) TRIPS.set(gkey(g), {dur, dist});
+      });
+    }catch(e){ fail++; }
+  }
+  TRIP_STATE = "";
+  ogStatus(fail ? "일부 이동시간을 계산하지 못했습니다 (경로 서버 응답 없음). 잠시 후 다시 '거리 계산'을 눌러 보세요." : "", fail ? "bad" : "");
+  draw();
+}
+function ogStatus(extra, cls){
+  const st = $("og-st");
+  st.className = "st " + (cls || "");
+  if(!ORIGIN){ st.textContent = extra || "출발지를 넣으면 공고 현장까지 거리와 자동차 예상 이동시간이 나옵니다. (이 브라우저에만 저장)"; }
+  else st.innerHTML = `출발지: <b>${esc(ORIGIN.name)}</b> · 이동시간은 교통상황을 반영하지 않은 자동차 평균 추정치입니다.${extra ? "<br>" + esc(extra) : ""}`;
+  $("og-opts").hidden = !ORIGIN; $("og-clear").hidden = !ORIGIN;
+}
+function setOrigin(o){
+  ORIGIN = o;
+  try{ o ? localStorage.setItem("kbid-origin", JSON.stringify(o)) : localStorage.removeItem("kbid-origin"); }catch(e){}
+  ogStatus(); computeTrips().then(() => {}); if(!o) draw();
+}
+let kakaoReady = null;
+function loadKakao(){
+  if(!KAKAO_JS_KEY || KAKAO_JS_KEY.startsWith("__")) return Promise.reject(new Error("no key"));
+  return kakaoReady ||= new Promise((ok, bad) => {
+    const sc = document.createElement("script");
+    sc.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(KAKAO_JS_KEY)}&libraries=services&autoload=false`;
+    sc.onload = () => kakao.maps.load(() => ok(kakao));
+    sc.onerror = () => { kakaoReady = null; bad(new Error("kakao")); };
+    document.head.appendChild(sc);
+  });
+}
+async function findPlace(q){
+  try{
+    const k = await loadKakao();
+    const byAddr = await new Promise(r => new k.maps.services.Geocoder().addressSearch(q, (res, st) => r(st === k.maps.services.Status.OK ? res[0] : null)));
+    if(byAddr) return {name: byAddr.address_name || q, lat: +byAddr.y, lon: +byAddr.x};
+    const byPlace = await new Promise(r => new k.maps.services.Places().keywordSearch(q, (res, st) => r(st === k.maps.services.Status.OK ? res[0] : null)));
+    if(byPlace) return {name: `${byPlace.place_name} (${byPlace.road_address_name || byPlace.address_name})`, lat: +byPlace.y, lon: +byPlace.x};
+    return null;
+  }catch(e){
+    // 카카오 키가 없거나 막히면 오픈스트리트맵으로
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&q=${encodeURIComponent(q)}`);
+    const j = await r.json();
+    return j[0] ? {name: j[0].display_name.split(",").slice(0,3).join(","), lat: +j[0].lat, lon: +j[0].lon} : null;
+  }
+}
+$("og-go").onclick = async () => {
+  const q = $("og-q").value.trim();
+  if(!q){ if(ORIGIN) computeTrips(); else $("og-q").focus(); return; }
+  ogStatus("출발지 찾는 중…");
+  try{
+    const o = await findPlace(q);
+    if(!o){ ogStatus(`'${q}' 위치를 찾지 못했습니다. 도로명 주소나 큰 건물 이름으로 다시 넣어 보세요.`, "bad"); return; }
+    $("og-q").value = ""; setOrigin(o);
+  }catch(e){ ogStatus("위치 찾기 서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.", "bad"); }
+};
+$("og-q").addEventListener("keydown", e => { if(e.key === "Enter") $("og-go").click(); });
+$("og-here").onclick = () => {
+  if(!navigator.geolocation){ ogStatus("이 브라우저는 현재 위치를 지원하지 않습니다.", "bad"); return; }
+  ogStatus("현재 위치 확인 중…");
+  navigator.geolocation.getCurrentPosition(
+    p => setOrigin({name: "현재 위치", lat: p.coords.latitude, lon: p.coords.longitude}),
+    () => ogStatus("현재 위치를 가져오지 못했습니다 (브라우저 위치 권한 확인).", "bad"), {timeout: 15000});
+};
+$("og-clear").onclick = () => setOrigin(null);
+$("og-sort").onchange = e => { SORT = e.target.value; draw(); };
+$("og-max").onchange = e => { MAXMIN = +e.target.value; drawRegions(); };
+
 function card(n){
   const addrs = n.addresses || [];
   const addr = addrs.length
@@ -381,7 +531,7 @@ function card(n){
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
   const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
   return `<article class="card"><div class="t">${esc(n.title)}</div>
-    <div class="m"><span>${meta}</span></div>${dates}${addr}${links?`<div class="links">${links}</div>`:""}</article>`;
+    <div class="m"><span>${meta}</span></div>${dates}${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
 /* ── 지금 갱신: GitHub Actions 실행 (토큰은 이 브라우저 localStorage에만) ── */
