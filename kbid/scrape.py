@@ -17,7 +17,7 @@ class Kbid:
         self.s = requests.Session()
         self.s.headers["User-Agent"] = UA
         self.user, self.pw = user, pw
-        self.query = None
+        self.tabs = []  # [(탭 이름, 조건 문자열)]
 
     def _get(self, url, **kw):
         time.sleep(PAUSE)
@@ -35,20 +35,27 @@ class Kbid:
         page = self._get("/mypage/IndustryTypesCalendar.htm").text
         if "로그아웃" not in page:
             raise RuntimeError("케이비드 로그인 실패 — 아이디/비밀번호 또는 이용기간을 확인하세요")
-        # 사용자 맞춤 조건(업종·지역)은 스케줄러 화면의 스크립트에 들어 있다
-        m = re.search(r"industryTypesList\.php.*?'(&bidKind=[^']*)'", page, re.S)
-        if not m:
+        # 맞춤스케줄러 탭(대전 권역·전국 등). 이름이 '미설정'인 빈 탭은 건너뛴다
+        tabs = re.findall(r'IndustryTypesCalendar\.htm\?Mtype=(\d+)">\s*([^<]+?)\s*</a>', page)
+        for mtype, name in tabs:
+            if name == "미설정":
+                continue
+            if mtype != "1":
+                page = self._get(f"/mypage/IndustryTypesCalendar.htm?Mtype={mtype}").text
+            # 탭의 맞춤 조건(업종·지역)은 스케줄러 화면의 스크립트에 들어 있다
+            m = re.search(r"industryTypesList\.php.*?'(&bidKind=[^']*)'", page, re.S)
+            if m:
+                self.tabs.append((name, m.group(1)))
+        if not self.tabs:
             raise RuntimeError("맞춤스케줄러 조건을 찾지 못했습니다 (사이트 구조 변경?)")
-        self.query = m.group(1)
-        area = re.search(r"나의 맞춤정보.*?지역\s*</?[^>]*>\s*([^<]+)", page, re.S)
-        return area.group(1).strip() if area else ""
+        return self.tabs
 
-    def day_list(self, day, order="FinishDTime"):
+    def day_list(self, day, query, order="FinishDTime"):
         """그날(정렬 기준 날짜) 공고 목록."""
         out, page = [], 1
         while True:
             url = (f"/mypage/industryTypesList.php?setYear={day.year}&setMonth={day.month:02d}"
-                   f"&setDay={day.day:02d}&page={page}&state=1&searchDate={order}{self.query}")
+                   f"&setDay={day.day:02d}&page={page}&state=1&searchDate={order}{query}")
             soup = BeautifulSoup(self._get(url).text, "html.parser")
             for li in soup.select("#cal-list li.list-item"):
                 a = li.select_one(".ln-subject a")

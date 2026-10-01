@@ -45,6 +45,8 @@ h1{font-size:22px;margin:0 0 4px}
 .tools input[type=search]{flex:1 1 240px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:15px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
+#tabs{margin-bottom:8px}
+#tabs .chip{font-weight:600}
 .chip[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .count{color:var(--sub);font-size:13px;margin-left:auto}
 /* 날짜 묶음 */
@@ -62,6 +64,50 @@ h1{font-size:22px;margin:0 0 4px}
 .links{margin-top:6px;font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
 .links a{color:var(--accent)}
 .empty{color:var(--sub);text-align:center;padding:40px 0}
+/* 달력 */
+.viewbar{display:flex;gap:6px;margin:14px 0 4px}
+.calwrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;align-items:start;margin-top:12px}
+@media (max-width:860px){.calwrap{grid-template-columns:minmax(0,1fr)}}
+.cal{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:sticky;top:12px}
+@media (max-width:860px){.cal{position:static}}
+.cal-head{display:flex;align-items:center;justify-content:center;gap:14px;padding:10px;border-bottom:1px solid var(--line)}
+.cal-head b{font-size:17px;min-width:110px;text-align:center}
+.cal-head button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;width:32px;height:30px;font-size:16px;cursor:pointer}
+.cal-head button:disabled{opacity:.3;cursor:default}
+.cal-head .go-today{width:auto;padding:0 10px;font-size:13px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.cal-grid .wd{text-align:center;font-size:12px;font-weight:600;padding:6px 0;background:var(--bg);border-bottom:1px solid var(--line)}
+.cal-grid .sun{color:#d64545} .cal-grid .sat{color:#3d6fd6}
+.cell{min-height:74px;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0;margin:0;padding:4px 5px;display:flex;flex-direction:column;align-items:stretch;gap:4px;background:var(--card);font:inherit;color:inherit;text-align:left}
+.cell:nth-child(7n){border-right:0}
+.cell .dn{font-size:12px;text-align:right}
+.cell.out{background:var(--bg)} .cell.out .dn{opacity:.35}
+.cell.today{background:var(--soft)}
+.cell.has{cursor:pointer}
+.cell.has:hover{outline:1px solid var(--accent);outline-offset:-1px}
+.cell.sel{outline:2px solid var(--accent);outline-offset:-2px}
+.cell .cnt{align-self:center;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;font-weight:600;background:var(--card);white-space:nowrap}
+.cell.sel .cnt{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.cell .nf{align-self:center;font-size:11px;color:var(--sub)}
+@media (max-width:520px){.cell{min-height:56px;padding:3px 2px}.cell .cnt{padding:1px 5px;font-size:11px}.cell .nf{display:none}}
+.cal-legend{font-size:12px;color:var(--sub);padding:8px 10px}
+.dayhead{font-size:16px;font-weight:700;margin:0 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dayhead .n{color:var(--sub);font-weight:400;font-size:13px}
+/* 지금 갱신 */
+.head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.head > div{min-width:0}
+.btn2{background:var(--card);color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:7px 14px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn2:disabled{opacity:.55;cursor:default}
+.btn2.solid{background:var(--accent);color:var(--accent-ink)}
+.rf{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px}
+.rf[hidden]{display:none}
+.rf p{margin:0 0 8px}
+.rf ol{margin:0 0 8px;padding-left:20px}
+.rf .row{display:flex;gap:6px;flex-wrap:wrap}
+.rf input{flex:1 1 220px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px}
+.rf a{color:var(--accent)}
+#rf-msg{font-size:13px;color:var(--sub);margin-top:6px;min-height:1.2em}
+#rf-msg.ok{color:var(--today-ink)} #rf-msg.bad{color:#d33}
 footer{margin-top:36px;border-top:1px solid var(--line);padding-top:14px;color:var(--sub);font-size:12px}
 footer h3{font-size:13px;color:var(--ink);margin:0 0 6px}
 footer p{margin:0 0 6px}
@@ -80,16 +126,48 @@ footer p{margin:0 0 6px}
 </div>
 
 <div id="app" class="wrap">
-  <h1>입찰공고 현장 일정</h1>
-  <div class="sub" id="meta"></div>
+  <div class="head">
+    <div>
+      <h1>입찰공고 현장 일정</h1>
+      <div class="sub" id="meta"></div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn2" id="rf-btn" type="button">지금 갱신</button>
+      <button class="btn2" id="rf-set" type="button" aria-label="갱신 설정" title="갱신 설정">⚙</button>
+    </div>
+  </div>
+  <div id="rf-msg" role="status"></div>
+  <div class="rf" id="rf-setup" hidden>
+    <p><b>지금 갱신 설정</b> — 관리자만 쓸 수 있습니다. GitHub 토큰은 <b>이 브라우저에만</b> 저장되고 사이트에는 올라가지 않습니다.</p>
+    <ol>
+      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub 토큰 만들기</a> → Repository access: <b>Only select repositories</b> → <b>kbid-schedule</b></li>
+      <li>Permissions → Repository permissions → <b>Actions: Read and write</b> → Generate token</li>
+      <li>만든 토큰(github_pat_…)을 아래에 붙여 넣고 저장</li>
+    </ol>
+    <div class="row">
+      <input type="password" id="rf-token" placeholder="github_pat_..." aria-label="GitHub 토큰" autocomplete="off">
+      <button class="btn2 solid" id="rf-save" type="button">저장</button>
+      <button class="btn2" id="rf-clear" type="button">토큰 지우기</button>
+    </div>
+    <p style="margin:8px 0 0">토큰 없이 하려면: <a id="rf-actions" target="_blank" rel="noopener">GitHub Actions 화면</a>에서 <b>Run workflow</b> 버튼을 누르세요.</p>
+  </div>
   <div class="notice"><b>비상업적 이용 안내</b> · 이 페이지는 영리 목적이 아닌 업무 참고용으로만 운영됩니다. 입찰 참여 전 반드시 공고 원문을 확인하세요.</div>
 
   <div class="tools">
     <input type="search" id="q" placeholder="공고명·기관·주소 검색" aria-label="검색">
     <span class="count" id="count"></span>
   </div>
+  <div class="chips" id="tabs" aria-label="맞춤스케줄러 탭"></div>
   <div class="chips" id="regions" aria-label="지역"></div>
-  <div id="list"></div>
+  <div class="viewbar chips" id="views" aria-label="보기 방식">
+    <button class="chip" data-v="cal" aria-pressed="true">달력</button>
+    <button class="chip" data-v="list" aria-pressed="false">목록</button>
+  </div>
+  <div class="calwrap" id="calview">
+    <div class="cal" id="cal"></div>
+    <div id="daylist"></div>
+  </div>
+  <div id="list" hidden></div>
 
   <footer>
     <h3>비상업적 이용 및 면책 고지</h3>
@@ -138,6 +216,7 @@ document.getElementById("f").addEventListener("submit", e => {
 const saved = store.get("kbid-pw");
 if(saved) tryOpen(saved, true);
 
+const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const WD = "일월화수목금토";
 function dayLabel(d){
@@ -147,37 +226,48 @@ function dayLabel(d){
 function todayKST(){
   return new Date(Date.now() + 9*3600e3).toISOString().slice(0,10);
 }
-const SIDO = [["서울","서울"],["부산","부산"],["대구","대구"],["인천","인천"],["광주","광주"],["대전","대전"],["울산","울산"],["세종","세종"],["경기","경기"],["강원","강원"],["충청북","충북"],["충북","충북"],["충청남","충남"],["충남","충남"],["전라북","전북"],["전북","전북"],["전라남","전남"],["전남","전남"],["경상북","경북"],["경북","경북"],["경상남","경남"],["경남","경남"],["제주","제주"]];
+const SIDO = [["전남광주","광주·전남"],["서울","서울"],["부산","부산"],["대구","대구"],["인천","인천"],["광주","광주"],["대전","대전"],["울산","울산"],["세종","세종"],["경기","경기"],["강원","강원"],["충청북","충북"],["충북","충북"],["충청남","충남"],["충남","충남"],["전라북","전북"],["전북","전북"],["전라남","전남"],["전남","전남"],["경상북","경북"],["경북","경북"],["경상남","경남"],["경남","경남"],["제주","제주"]];
 function region(n){
   for(const a of [(n.addresses||[])[0], n.region]){
     for(const [k,v] of SIDO) if((a||"").startsWith(k)) return v;
   }
-  return "기타";
+  return "지역 미확인";  // 원문 주소도 없고 공고 지역도 '전국'인 경우
 }
 
-let DATA, REGION = "전체";
+let DATA, TAB = "전체", REGION = "전체";
+const inTab = n => TAB === "전체" || (n.tabs||[]).includes(TAB);
+function chips(id, names, counts, cur, pick){
+  const box = document.getElementById(id);
+  box.innerHTML = names.map(r => `<button class="chip" aria-pressed="${r===cur}" data-r="${esc(r)}">${esc(r)} ${counts[r]||0}</button>`).join("");
+  box.onclick = e => { const b = e.target.closest(".chip"); if(b) pick(b.dataset.r); };
+}
+function drawTabs(){
+  const tabs = DATA.tabs || [];
+  const counts = {"전체": DATA.notices.length};
+  DATA.notices.forEach(n => (n.tabs||[]).forEach(t => counts[t] = (counts[t]||0)+1));
+  document.getElementById("tabs").style.display = tabs.length > 1 ? "" : "none";
+  chips("tabs", ["전체", ...tabs], counts, TAB, t => { TAB = t; REGION = "전체"; drawTabs(); });
+  drawRegions();
+}
+function drawRegions(){
+  const counts = {"전체": 0};
+  DATA.notices.filter(inTab).forEach(n => { const r = region(n); counts[r] = (counts[r]||0)+1; counts["전체"]++; });
+  const regs = ["전체", ...Object.keys(counts).filter(r => r!=="전체").sort((a,b)=>counts[b]-counts[a])];
+  chips("regions", regs, counts, REGION, r => { REGION = r; drawRegions(); });
+  draw();
+}
 function render(data){
   DATA = data;
   document.getElementById("meta").textContent =
     `${data.range_from} ~ ${data.range_to} · 공고 ${data.notices.length}건 · 마지막 갱신 ${data.updated} (한국 시간)`;
-  const counts = {};
-  data.notices.forEach(n => { const r = region(n); counts[r] = (counts[r]||0)+1; });
-  const regs = ["전체", ...Object.keys(counts).sort((a,b)=>counts[b]-counts[a])];
-  const box = document.getElementById("regions");
-  box.innerHTML = regs.map(r => `<button class="chip" aria-pressed="${r===REGION}" data-r="${esc(r)}">${esc(r)}${r==="전체"?"":" "+counts[r]}</button>`).join("");
-  box.onclick = e => {
-    const b = e.target.closest(".chip"); if(!b) return;
-    REGION = b.dataset.r;
-    box.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.r===REGION));
-    draw();
-  };
   document.getElementById("q").oninput = draw;
-  draw();
+  drawTabs();
 }
 function draw(){
   const q = document.getElementById("q").value.trim().toLowerCase();
   const today = todayKST();
   const items = DATA.notices.filter(n => {
+    if(!inTab(n)) return false;
     if(REGION !== "전체" && region(n) !== REGION) return false;
     if(!q) return true;
     return [n.title,n.agency,n.no,(n.addresses||[]).join(" ")].join(" ").toLowerCase().includes(q);
@@ -186,6 +276,9 @@ function draw(){
   const byDay = {};
   items.forEach(n => (byDay[n.date] ||= []).push(n));
   const days = Object.keys(byDay).sort();
+  $("calview").hidden = VIEW !== "cal";
+  $("list").hidden = VIEW !== "list";
+  if(VIEW === "cal"){ drawCal(byDay, days); return; }
   const el = document.getElementById("list");
   if(!days.length){ el.innerHTML = `<div class="empty">조건에 맞는 공고가 없습니다.</div>`; return; }
   el.innerHTML = days.map(d => `
@@ -194,6 +287,65 @@ function draw(){
       ${byDay[d].map(card).join("")}
     </section>`).join("");
 }
+/* ── 달력 보기 ── */
+let VIEW = "cal", SEL = null, MONTH = null;  // MONTH = "YYYY-MM"
+const ym = d => d.slice(0,7);
+function shiftMonth(m, k){
+  const [y,mm] = m.split("-").map(Number); const t = new Date(Date.UTC(y, mm-1+k, 1));
+  return t.toISOString().slice(0,7);
+}
+function drawCal(byDay, days){
+  const today = todayKST();
+  const first = ym(DATA.range_from < today ? today : DATA.range_from), last = ym(DATA.range_to);
+  if(!SEL || !byDay[SEL]){ SEL = byDay[today] ? today : (days.find(d => d >= today) || days[0] || today); MONTH = ym(SEL); }
+  if(MONTH < first) MONTH = first;
+  if(MONTH > last) MONTH = last;
+  const [y,m] = MONTH.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m-1, 1)), dow = start.getUTCDay();
+  const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const cells = [];
+  for(let i = 0; i < dow; i++) cells.push(`<div class="cell out"></div>`);
+  for(let dd = 1; dd <= dim; dd++){
+    const d = `${MONTH}-${String(dd).padStart(2,"0")}`, list = byDay[d] || [], w = (dow + dd - 1) % 7;
+    const inRange = d >= DATA.range_from && d <= DATA.range_to;
+    const nf = list.filter(n => !(n.addresses||[]).length).length;
+    const cls = ["cell", !inRange && "out", d===today && "today", list.length && "has", d===SEL && "sel"].filter(Boolean).join(" ");
+    const tag = list.length ? "button" : "div";
+    cells.push(`<${tag} class="${cls}" ${list.length?`data-d="${d}" type="button" aria-label="${dayLabel(d)} 공고 ${list.length}건"`:""}>
+      <span class="dn ${w===0?"sun":w===6?"sat":""}">${dd}</span>
+      ${list.length?`<span class="cnt">${list.length}건</span>`:""}
+      ${nf?`<span class="nf" title="현장 주소를 찾지 못한 공고 수">미확인 ${nf}</span>`:""}</${tag}>`);
+  }
+  while(cells.length % 7) cells.push(`<div class="cell out"></div>`);
+  $("cal").innerHTML = `
+    <div class="cal-head">
+      <button type="button" data-k="-1" aria-label="이전 달" ${MONTH<=first?"disabled":""}>‹</button>
+      <b>${y}년 ${m}월</b>
+      <button type="button" data-k="1" aria-label="다음 달" ${MONTH>=last?"disabled":""}>›</button>
+      <button type="button" class="go-today" data-today>오늘</button>
+    </div>
+    <div class="cal-grid">
+      ${[..."일월화수목금토"].map((w,i)=>`<div class="wd ${i===0?"sun":i===6?"sat":""}">${w}</div>`).join("")}
+      ${cells.join("")}
+    </div>
+    <div class="cal-legend">날짜 = 투찰마감일 · 미확인 = 원문에서 현장 주소를 못 찾은 공고 · 날짜를 누르면 그날 공고가 나옵니다</div>`;
+  $("cal").onclick = e => {
+    const b = e.target.closest("button"); if(!b || b.disabled) return;
+    if(b.dataset.k){ MONTH = shiftMonth(MONTH, +b.dataset.k); draw(); }
+    else if(b.hasAttribute("data-today")){ SEL = today; MONTH = ym(today); draw(); }
+    else if(b.dataset.d){ SEL = b.dataset.d; draw(); if(innerWidth <= 860) $("daylist").scrollIntoView({behavior:"smooth", block:"start"}); }
+  };
+  const list = byDay[SEL] || [];
+  $("daylist").innerHTML = `<div class="dayhead">${dayLabel(SEL)} 마감 ${SEL===today?'<span class="tag">오늘</span>':''}<span class="n">${list.length}건</span></div>` +
+    (list.length ? list.map(card).join("") : `<div class="empty">이 날짜에 마감되는 공고가 없습니다.</div>`);
+}
+$("views").onclick = e => {
+  const b = e.target.closest(".chip"); if(!b) return;
+  VIEW = b.dataset.v;
+  $("views").querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.v===VIEW));
+  draw();
+};
+
 function card(n){
   const addrs = n.addresses || [];
   const addr = addrs.length
@@ -201,7 +353,7 @@ function card(n){
         addrs.length===1 ? esc(addrs[0]) : `<ol>${addrs.map(a=>`<li>${esc(a)}</li>`).join("")}</ol>`}</div>`
     : `<div class="addr none"><span class="k">현장 주소</span>원문에서 현장 주소를 찾지 못했습니다${n.region?` (공고 지역: ${esc(n.region)})`:""}. 원문을 확인하세요.</div>`;
   const hm = s => (s||"").slice(5,16).replace("-","/");
-  const meta = [n.agency && `공고 ${esc(n.agency)}`, n.demand && n.demand!==n.agency && `수요 ${esc(n.demand)}`,
+  const meta = [(DATA.tabs||[]).length > 1 && (n.tabs||[]).length && `탭 ${esc(n.tabs.join("·"))}`, n.agency && `공고 ${esc(n.agency)}`, n.demand && n.demand!==n.agency && `수요 ${esc(n.demand)}`,
                 n.no && `공고번호 ${esc(n.no)}`, n.deadline && `투찰마감 ${esc(hm(n.deadline))}`,
                 n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
@@ -209,6 +361,75 @@ function card(n){
   return `<article class="card"><div class="t">${esc(n.title)}</div>
     <div class="m"><span>${meta}</span></div>${addr}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
+
+/* ── 지금 갱신: GitHub Actions 실행 (토큰은 이 브라우저 localStorage에만) ── */
+const REPO = (() => {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const seg = location.pathname.split("/").filter(Boolean)[0];
+  return m && seg ? `${m[1]}/${seg}` : "zab010/kbid-schedule";
+})();
+const WORKFLOW = "daily.yml";
+const ACTIONS_URL = `https://github.com/${REPO}/actions/workflows/${WORKFLOW}`;
+const local = {
+  get(k){ try{ return localStorage.getItem(k) }catch(e){ return null } },
+  set(k,v){ try{ v ? localStorage.setItem(k,v) : localStorage.removeItem(k) }catch(e){} },
+};
+$("rf-actions").href = ACTIONS_URL;
+function rfMsg(text, cls){ const m = $("rf-msg"); m.textContent = text; m.className = cls || ""; }
+function gh(path, opt = {}){
+  return fetch(`https://api.github.com/repos/${REPO}${path}`, {...opt, headers: {
+    "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
+    "Authorization": `Bearer ${local.get("kbid-gh-token")}`, ...(opt.body ? {"Content-Type": "application/json"} : {}),
+  }});
+}
+const showSetup = on => { $("rf-setup").hidden = !on; if(on) $("rf-token").focus(); };
+$("rf-set").onclick = () => showSetup($("rf-setup").hidden);
+$("rf-save").onclick = () => {
+  const t = $("rf-token").value.trim();
+  if(!t){ $("rf-token").focus(); return; }
+  local.set("kbid-gh-token", t); $("rf-token").value = "";
+  showSetup(false); rfMsg("토큰을 저장했습니다. '지금 갱신'을 누르세요.", "ok");
+};
+$("rf-clear").onclick = () => { local.set("kbid-gh-token", null); rfMsg("이 브라우저에서 토큰을 지웠습니다."); };
+
+let polling = null;
+$("rf-btn").onclick = async () => {
+  if(!local.get("kbid-gh-token")){ showSetup(true); rfMsg("처음 한 번 GitHub 토큰을 저장해야 합니다."); return; }
+  const btn = $("rf-btn"); btn.disabled = true;
+  rfMsg("갱신 요청 중…");
+  const since = Date.now() - 60e3;
+  try{
+    const r = await gh(`/actions/workflows/${WORKFLOW}/dispatches`, {method: "POST", body: JSON.stringify({ref: "main"})});
+    if(r.status === 401 || r.status === 403 || r.status === 404){
+      btn.disabled = false; showSetup(true);
+      rfMsg("토큰이 맞지 않거나 권한(Actions: Read and write)이 없습니다. 토큰을 다시 저장하세요.", "bad"); return;
+    }
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  }catch(e){
+    btn.disabled = false; rfMsg(`요청 실패 (${e.message}). 잠시 후 다시 시도하거나 Actions 화면에서 실행하세요.`, "bad"); return;
+  }
+  rfMsg("요청했습니다. 실행이 시작되기를 기다리는 중…");
+  const t0 = Date.now();
+  clearInterval(polling);
+  polling = setInterval(async () => {
+    const min = Math.floor((Date.now() - t0) / 60e3);
+    try{
+      const r = await gh(`/actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&per_page=1`);
+      const run = (await r.json()).workflow_runs?.[0];
+      if(!run || new Date(run.created_at).getTime() < since){ rfMsg(`실행 대기 중… (${min}분)`); return; }
+      if(run.status !== "completed"){
+        rfMsg(`${run.status === "in_progress" ? "공고 수집 중" : "실행 대기 중"}… ${min}분 지남 (보통 10~20분 걸립니다. 이 창을 닫아도 계속 진행됩니다)`);
+        return;
+      }
+      clearInterval(polling); btn.disabled = false;
+      if(run.conclusion === "success"){
+        rfMsg("갱신 완료. 사이트 반영까지 1~2분 걸립니다 — 잠시 후 새로고침하세요.", "ok");
+      }else{
+        rfMsg(`실행이 실패했습니다 (${run.conclusion}). Actions 화면에서 기록을 확인하세요.`, "bad");
+      }
+    }catch(e){ /* 일시적 네트워크 오류는 다음 확인 때 다시 시도 */ }
+  }, 15000);
+};
 </script>
 </body>
 </html>

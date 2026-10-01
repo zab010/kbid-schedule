@@ -65,22 +65,24 @@ def site_addresses(kb, det):
 def main():
     load_env()
     kb = Kbid(os.environ["KBID_ID"], os.environ["KBID_PW"])
-    kb.login()
-    print("로그인 완료, 조건:", kb.query)
+    for name, query in kb.login():
+        print(f"로그인 완료, 탭 「{name}」 조건: {query}")
 
     cache = json.loads(CACHE.read_text(encoding="utf-8")) if CACHE.exists() else {}
     today = datetime.now(KST).date()
-    notices, seen = [], set()
+    notices, seen = [], {}
     for i in range(DAYS):
         day = today + timedelta(days=i)
-        rows = kb.day_list(day)
+        rows = [(tab, row) for tab, query in kb.tabs for row in kb.day_list(day, query)]
         if rows:
             print(f"{day}: {len(rows)}건")
-        for row in rows:
+        for tab, row in rows:
             key = f"{row['bid_no']}-{row['bid_seq']}"
             if key in seen:
+                # 여러 탭에 함께 나온 공고는 한 번만 싣고 탭 이름만 더한다
+                if tab not in seen[key]["tabs"]:
+                    seen[key]["tabs"].append(tab)
                 continue
-            seen.add(key)
             info = cache.get(key)
             if not info:
                 det = kb.detail(row["bid_no"], row["bid_seq"])
@@ -102,11 +104,12 @@ def main():
                 if found:
                     cache[key] = info
                 print(f"  {row['title'][:40]} → {info['addresses'] or '주소 못 찾음'}")
-            notices.append({
-                "date": day.isoformat(),
+            seen[key] = {
+                "date": day.isoformat(), "tabs": [tab],
                 "title": row["title"], "agency": row["agency"], "kind": row["kind"],
                 "region": row["region"], **info,
-            })
+            }
+            notices.append(seen[key])
 
     CACHE.parent.mkdir(exist_ok=True)
     CACHE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
@@ -114,6 +117,7 @@ def main():
         "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
         "range_from": today.isoformat(),
         "range_to": (today + timedelta(days=DAYS - 1)).isoformat(),
+        "tabs": [name for name, _ in kb.tabs],
         "notices": notices,
     }
     (ROOT / "data" / "notices.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")

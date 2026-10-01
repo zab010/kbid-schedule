@@ -2,7 +2,7 @@ name: 매일 공고 갱신
 
 on:
   schedule:
-    - cron: "0 20 * * *"   # UTC 20:00 = 한국 시간 오전 5시
+    - cron: "0 19 * * *"   # UTC 19:00 = 한국 시간 오전 4시
   workflow_dispatch:        # Actions 화면에서 직접 실행
 
 permissions:
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
