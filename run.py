@@ -14,6 +14,26 @@ CACHE = ROOT / "data" / "cache.json"
 DAYS = 31  # 오늘 포함 한 달
 KST = timezone(timedelta(hours=9))
 
+# 올릴 공고의 업종 — 공고 업종에 이 밖의 것이 하나라도 있으면 싣지 않는다 (2026-10-01 사용자 지정)
+# KBID 목록 표기 기준. 오른쪽 주석은 사용자가 준 이름
+ALLOWED_KINDS = {
+    "(대)금속창호,지붕건축물조립",
+    "(대)도장,습식,방수,석공",
+    "(대)실내건축",
+    "실내건축",
+    "건축",                    # 건축공사
+    "금속구조물",              # 금속구조물창호온실
+    "습식/방수(미장/방수)",    # 습식방수(미장방수조적)
+    "지붕,판금,건축물조립",    # 지붕판금건축물조립
+    "시설물",                  # 시설물유지관리
+}
+
+
+def allowed(kind):
+    """'[실내건축][건축]' 같은 업종 칸이 모두 ALLOWED_KINDS 안에 있는지."""
+    kinds = set(re.findall(r"\[([^\]]+)\]", kind or ""))
+    return bool(kinds) and kinds <= ALLOWED_KINDS
+
 
 def load_env():
     f = Path.home() / ".kbid.env"
@@ -74,8 +94,10 @@ def main():
     for i in range(DAYS):
         day = today + timedelta(days=i)
         rows = [(tab, row) for tab, query in kb.tabs for row in kb.day_list(day, query)]
-        if rows:
-            print(f"{day}: {len(rows)}건")
+        n_all = len(rows)
+        rows = [(tab, row) for tab, row in rows if allowed(row["kind"])]
+        if n_all:
+            print(f"{day}: {n_all}건 중 업종 맞는 {len(rows)}건")
         for tab, row in rows:
             key = f"{row['bid_no']}-{row['bid_seq']}"
             if key in seen:
