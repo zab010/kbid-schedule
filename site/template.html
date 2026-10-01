@@ -57,6 +57,13 @@ h1{font-size:22px;margin:0 0 4px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px}
 .card .t{font-weight:600}
 .card .m{color:var(--sub);font-size:13px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 14px}
+.dates{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;margin-top:8px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:13px}
+.dates div{background:var(--card);padding:5px 8px;min-width:0}
+.dates .k{display:block;font-size:11px;color:var(--sub)}
+.dates .v{font-weight:600;white-space:nowrap}
+.dates .v.none{color:var(--sub);font-weight:400}
+.dates .main{background:var(--soft)}
+@media (max-width:640px){.dates{grid-template-columns:repeat(2,minmax(0,1fr))}.dates div:last-child{grid-column:1/-1}}
 .addr{margin-top:8px;background:var(--soft);border-radius:8px;padding:8px 10px;font-size:14px}
 .addr .k{font-size:12px;color:var(--sub);display:block}
 .addr.none{color:var(--sub)}
@@ -346,6 +353,20 @@ $("views").onclick = e => {
   draw();
 };
 
+/* 입찰 일정 5칸: 값은 'YYYY-MM-DD HH:MM' / 'YYYY-MM-DD' / '없음' / '' */
+const DATE_KEYS = ["현장설명일","참가신청마감일","입찰개시일","투찰마감일시","입찰(개찰)일시"];
+function fmtDate(v){
+  if(!v) return `<span class="v none">-</span>`;
+  if(!/^\d{4}-/.test(v)) return `<span class="v none">${esc(v)}</span>`;
+  const [y,m,d] = v.slice(0,10).split("-").map(Number);
+  const wd = WD[new Date(Date.UTC(y,m-1,d)).getUTCDay()];
+  return `<span class="v">${m}/${d}(${wd})${v.length > 10 ? " " + esc(v.slice(11,16)) : ""}</span>`;
+}
+function datesBox(n){
+  if(!n.dates) return "";
+  return `<div class="dates">${DATE_KEYS.map(k =>
+    `<div class="${k==="투찰마감일시"?"main":""}"><span class="k">${k}</span>${fmtDate(n.dates[k])}</div>`).join("")}</div>`;
+}
 function card(n){
   const addrs = n.addresses || [];
   const addr = addrs.length
@@ -353,13 +374,14 @@ function card(n){
         addrs.length===1 ? esc(addrs[0]) : `<ol>${addrs.map(a=>`<li>${esc(a)}</li>`).join("")}</ol>`}</div>`
     : `<div class="addr none"><span class="k">현장 주소</span>원문에서 현장 주소를 찾지 못했습니다${n.region?` (공고 지역: ${esc(n.region)})`:""}. 원문을 확인하세요.</div>`;
   const hm = s => (s||"").slice(5,16).replace("-","/");
+  const dates = datesBox(n);
   const meta = [(DATA.tabs||[]).length > 1 && (n.tabs||[]).length && `탭 ${esc(n.tabs.join("·"))}`, n.agency && `공고 ${esc(n.agency)}`, n.demand && n.demand!==n.agency && `수요 ${esc(n.demand)}`,
-                n.no && `공고번호 ${esc(n.no)}`, n.deadline && `투찰마감 ${esc(hm(n.deadline))}`,
-                n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
+                n.no && `공고번호 ${esc(n.no)}`,
+                !dates && n.deadline && `투찰마감 ${esc(hm(n.deadline))}`, !dates && n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
   const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
   return `<article class="card"><div class="t">${esc(n.title)}</div>
-    <div class="m"><span>${meta}</span></div>${addr}${links?`<div class="links">${links}</div>`:""}</article>`;
+    <div class="m"><span>${meta}</span></div>${dates}${addr}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
 /* ── 지금 갱신: GitHub Actions 실행 (토큰은 이 브라우저 localStorage에만) ── */

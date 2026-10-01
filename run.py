@@ -7,6 +7,7 @@ from pathlib import Path
 
 from kbid.address import file_text, find_site_addresses
 from kbid.build_site import build
+from kbid.dates import extract_dates
 from kbid.scrape import Kbid
 
 ROOT = Path(__file__).resolve().parent
@@ -38,11 +39,13 @@ def _specific(found):
     return any(re.search(r"\d", a) for a, _ in found)
 
 
-def site_addresses(kb, det):
+def site_addresses(kb, det, texts):
+    """현장 주소를 찾는다. 읽은 본문·첨부 글자는 texts 에 모아 둔다 (일정 찾기에 다시 씀)."""
     best, src = [], ""
     # 1) 상세 페이지에 실린 발주처 공고문 본문
     if det["body_html"]:
-        best = find_site_addresses(file_text("body.html", det["body_html"].encode()))
+        texts.append(file_text("body.html", det["body_html"].encode()))
+        best = find_site_addresses(texts[-1])
         src = "공고문 본문" if best else ""
     if _specific(best):
         return best, src
@@ -51,7 +54,8 @@ def site_addresses(kb, det):
         if attachment_order(f) >= 9:
             break
         try:
-            found = find_site_addresses(file_text(f["name"], kb.download(f["url"])))
+            texts.append(file_text(f["name"], kb.download(f["url"])))
+            found = find_site_addresses(texts[-1])
         except Exception as e:
             print(f"  ! 첨부 받기 실패 {f['name']}: {e}")
             continue
@@ -84,10 +88,16 @@ def main():
                     seen[key]["tabs"].append(tab)
                 continue
             info = cache.get(key)
+            if info and "dates" not in info:
+                # 일정 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 일정을 채운다
+                det = kb.detail(row["bid_no"], row["bid_seq"])
+                body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
+                info["dates"] = extract_dates(det["fields"], body)
             if not info:
                 det = kb.detail(row["bid_no"], row["bid_seq"])
                 fd = det["fields"]
-                found, src = site_addresses(kb, det)
+                texts = []
+                found, src = site_addresses(kb, det, texts)
                 no = re.search(r"[A-Z0-9]{6,}-\d{3}|\d{8,}-\d{2,}", fd.get("발주처 공고번호", ""))
                 info = {
                     "no": no.group(0) if no else fd.get("발주처 공고번호", ""),
@@ -99,6 +109,7 @@ def main():
                     "address_key": found[0][1] if found else "",
                     "address_file": src,
                     "files": [f for f in det["files"] if attachment_order(f) < 9],
+                    "dates": extract_dates(fd, *texts),
                 }
                 # 주소를 찾은 공고만 저장해 둔다 (못 찾은 건 다음 날 다시 시도 — 정정공고로 첨부가 바뀔 수 있음)
                 if found:
