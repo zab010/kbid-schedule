@@ -69,11 +69,7 @@ def site_addresses(kb, det, texts):
 
 
 def add_coords(notices):
-    """현장 주소(첫 번째)를 카카오 API로 좌표로 바꿔 notice['geo'] 에 넣는다. 키가 없으면 건너뛴다."""
-    key = os.environ.get("KAKAO_REST_KEY")
-    if not key:
-        print("KAKAO_REST_KEY 없음 — 좌표 찾기 건너뜀")
-        return
+    """현장 주소(첫 번째)를 오픈스트리트맵 검색으로 좌표로 바꿔 notice['geo'] 에 넣는다 (찾은 것은 캐시)."""
     geo = json.loads(GEO_CACHE.read_text(encoding="utf-8")) if GEO_CACHE.exists() else {}
     for n in notices:
         if not n["addresses"]:
@@ -81,7 +77,7 @@ def add_coords(notices):
         a = n["addresses"][0]
         if a not in geo:
             try:
-                g = geocode(a, key)
+                g = geocode(a)
             except Exception as e:
                 print(f"  ! 좌표 찾기 실패 {a}: {e}")
                 continue

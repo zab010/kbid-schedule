@@ -22,8 +22,7 @@ def encrypt(obj, password):
 
 def build(data, password, out=ROOT / "docs" / "index.html"):
     tpl = (ROOT / "site" / "template.html").read_text(encoding="utf-8")
-    html = (tpl.replace("__PAYLOAD__", json.dumps(encrypt(data, password)))
-               .replace("__KAKAO_JS_KEY__", os.environ.get("KAKAO_JS_KEY", "")))
+    html = tpl.replace("__PAYLOAD__", json.dumps(encrypt(data, password)))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
     (out.parent / ".nojekyll").touch()

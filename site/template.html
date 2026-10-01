@@ -295,7 +295,7 @@ function render(data){
     `${data.range_from} ~ ${data.range_to} · 공고 ${data.notices.length}건 · 마지막 갱신 ${data.updated} (한국 시간)`;
   document.getElementById("q").oninput = draw;
   drawTabs();
-  // 현장 좌표가 하나도 없으면(카카오 키 설정 전) 출발지 칸을 숨긴다
+  // 현장 좌표가 하나도 없으면 출발지 칸을 숨긴다
   $("origin").hidden = !data.notices.some(n => n.geo);
   if($("origin").hidden) ORIGIN = null;
   ogStatus();
@@ -401,8 +401,7 @@ function datesBox(n){
     `<div class="${k==="투찰마감일시"?"main":""}"><span class="k">${k}</span>${fmtDate(n.dates[k])}</div>`).join("")}</div>`;
 }
 /* ── 출발지에서 거리·이동시간 ──
-   현장 좌표(n.geo)는 수집 때 카카오 API로 찾아 둔 것. 도로 거리·시간은 OSRM(오픈스트리트맵) 경로 계산 — 교통상황 미반영 평균 추정 */
-const KAKAO_JS_KEY = "__KAKAO_JS_KEY__";
+   현장 좌표(n.geo)는 수집 때 오픈스트리트맵 검색으로 찾아 둔 것. 도로 거리·시간은 OSRM(오픈스트리트맵) 경로 계산 — 교통상황 미반영 평균 추정 */
 let ORIGIN = null, TRIPS = new Map(), SORT = "time", MAXMIN = 0;
 try{ ORIGIN = JSON.parse(localStorage.getItem("kbid-origin") || "null"); }catch(e){}
 function haversine(a, b){
@@ -469,31 +468,17 @@ function setOrigin(o){
   try{ o ? localStorage.setItem("kbid-origin", JSON.stringify(o)) : localStorage.removeItem("kbid-origin"); }catch(e){}
   ogStatus(); computeTrips().then(() => {}); if(!o) draw();
 }
-let kakaoReady = null;
-function loadKakao(){
-  if(!KAKAO_JS_KEY || KAKAO_JS_KEY.startsWith("__")) return Promise.reject(new Error("no key"));
-  return kakaoReady ||= new Promise((ok, bad) => {
-    const sc = document.createElement("script");
-    sc.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(KAKAO_JS_KEY)}&libraries=services&autoload=false`;
-    sc.onload = () => kakao.maps.load(() => ok(kakao));
-    sc.onerror = () => { kakaoReady = null; bad(new Error("kakao")); };
-    document.head.appendChild(sc);
-  });
-}
+/* 출발지 주소 → 좌표: 오픈스트리트맵 검색 (가입·키 없음). Nominatim 이 못 찾으면 Photon */
 async function findPlace(q){
-  try{
-    const k = await loadKakao();
-    const byAddr = await new Promise(r => new k.maps.services.Geocoder().addressSearch(q, (res, st) => r(st === k.maps.services.Status.OK ? res[0] : null)));
-    if(byAddr) return {name: byAddr.address_name || q, lat: +byAddr.y, lon: +byAddr.x};
-    const byPlace = await new Promise(r => new k.maps.services.Places().keywordSearch(q, (res, st) => r(st === k.maps.services.Status.OK ? res[0] : null)));
-    if(byPlace) return {name: `${byPlace.place_name} (${byPlace.road_address_name || byPlace.address_name})`, lat: +byPlace.y, lon: +byPlace.x};
-    return null;
-  }catch(e){
-    // 카카오 키가 없거나 막히면 오픈스트리트맵으로
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&q=${encodeURIComponent(q)}`);
-    const j = await r.json();
-    return j[0] ? {name: j[0].display_name.split(",").slice(0,3).join(","), lat: +j[0].lat, lon: +j[0].lon} : null;
-  }
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&accept-language=ko&q=${encodeURIComponent(q)}`);
+  const j = await r.json();
+  if(j[0]) return {name: j[0].display_name.split(",").slice(0,3).join(",").trim(), lat: +j[0].lat, lon: +j[0].lon};
+  const p = await (await fetch(`https://photon.komoot.io/api/?limit=1&bbox=124.5,33,131.9,38.7&q=${encodeURIComponent(q)}`)).json();
+  const f = (p.features || [])[0];
+  if(!f) return null;
+  const pr = f.properties || {};
+  return {name: [pr.name, pr.street, pr.housenumber, pr.district || pr.city].filter(Boolean).join(" ") || q,
+          lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0]};
 }
 $("og-go").onclick = async () => {
   const q = $("og-q").value.trim();

@@ -1,10 +1,19 @@
-"""현장 주소 → 좌표 (카카오 로컬 API). 키는 환경변수 KAKAO_REST_KEY."""
+"""현장 주소 → 좌표. 가입·키가 필요 없는 오픈스트리트맵 검색(Nominatim, 안 되면 Photon)을 쓴다.
+Nominatim 이용 정책: 1초에 1번 이하, 앱 이름이 담긴 User-Agent, 결과는 캐시해서 다시 묻지 않기."""
 import re
 import time
 
 import requests
 
-API = "https://dapi.kakao.com/v2/local/search/{}.json"
+UA = {"User-Agent": "kbid-schedule/1.0 (noncommercial bid notice map; https://github.com/zab010/kbid-schedule)"}
+_last = [0.0]
+
+
+def _wait():
+    d = time.time() - _last[0]
+    if d < 1.1:
+        time.sleep(1.1 - d)
+    _last[0] = time.time()
 
 
 def _clean(addr):
@@ -13,35 +22,54 @@ def _clean(addr):
     a = re.split(r"[,，]| 외\s*\d| 일원| 일대| 내\b", a)[0]
     # 번지·도로명 번호 뒤에 붙은 건물 이름은 뗀다
     m = re.match(r"(.*?\d+(?:-\d+)?(?:번지)?)(?=[\s.]|$)", a)
-    return re.sub(r"\s+", " ", (m.group(1) if m else a)).strip(" .")
+    a = re.sub(r"\s+", " ", (m.group(1) if m else a)).strip(" .")
+    return re.sub(r"(\d)번지$", r"\1", a)
 
 
-def _search(kind, query, key):
-    time.sleep(0.1)
-    r = requests.get(API.format(kind), params={"query": query, "size": 1},
-                     headers={"Authorization": f"KakaoAK {key}"}, timeout=30)
+def _nominatim(q):
+    _wait()
+    r = requests.get("https://nominatim.openstreetmap.org/search", headers=UA, timeout=30,
+                     params={"q": q, "format": "json", "limit": 1, "countrycodes": "kr"})
     r.raise_for_status()
-    docs = r.json().get("documents") or []
-    return (float(docs[0]["y"]), float(docs[0]["x"])) if docs else None
+    j = r.json()
+    return (float(j[0]["lat"]), float(j[0]["lon"])) if j else None
 
 
-def geocode(addr, key):
-    """좌표 {lat, lon, q, level}. level: 'addr' 주소 일치, 'area' 읍·면·동/시·군·구 수준, 'place' 장소 이름 검색."""
+def _photon(q):
+    time.sleep(0.5)
+    r = requests.get("https://photon.komoot.io/api/", headers=UA, timeout=30,
+                     params={"q": q, "limit": 1, "bbox": "124.5,33,131.9,38.7"})  # 한국 범위
+    r.raise_for_status()
+    f = r.json().get("features") or []
+    if not f:
+        return None
+    lon, lat = f[0]["geometry"]["coordinates"]
+    return lat, lon
+
+
+def geocode(addr):
+    """좌표 {lat, lon, q, level}. level: 'addr' 주소 그대로 찾음, 'area' 동·읍·면이나 시·군·구까지만 찾음."""
+    # '○○수련마을 주2동 / 중구 방아미로 131' 처럼 '/'로 이어진 경우 번호가 있는 쪽을 쓴다
+    parts = [p for p in addr.split("/") if re.search(r"\d", p)] or [addr]
+    return _geocode_one(parts[-1])
+
+
+def _geocode_one(addr):
     q = _clean(addr)
     if not q:
         return None
-    hit = _search("address", q, key)
-    if hit:
-        return {"lat": hit[0], "lon": hit[1], "q": q, "level": "addr"}
-    # 주소로 안 나오면 장소 이름(원래 문자열)으로
-    hit = _search("keyword", addr[:80], key)
-    if hit:
-        return {"lat": hit[0], "lon": hit[1], "q": addr[:80], "level": "place"}
-    # 그래도 없으면 뒤에서부터 한 단어씩 줄여 시·군·구/동 수준이라도
+    for find in (_nominatim, _photon):
+        try:
+            hit = find(q)
+        except requests.RequestException:
+            hit = None
+        if hit:
+            return {"lat": hit[0], "lon": hit[1], "q": q, "level": "addr"}
+    # 뒤에서부터 한 단어씩 줄여 동·구 수준이라도
     words = q.split()
-    while len(words) > 1:
+    while len(words) > 2:
         words.pop()
-        hit = _search("address", " ".join(words), key)
+        hit = _nominatim(" ".join(words))
         if hit:
             return {"lat": hit[0], "lon": hit[1], "q": " ".join(words), "level": "area"}
     return None
