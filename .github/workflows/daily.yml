@@ -41,7 +41,7 @@ jobs:
           KBID_PW: ${{ secrets.KBID_PW }}
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
           KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}   # 현장 주소 → 좌표
-          KAKAO_JS_KEY: ${{ vars.KAKAO_JS_KEY }}          # 사이트의 출발지 주소 찾기 (도메인 제한 키라 공개돼도 됨)
+          KAKAO_JS_KEY: ${{ secrets.KAKAO_JS_KEY }}       # 사이트의 출발지 주소 찾기 (도메인 제한 키라 페이지에 들어가도 됨)
           TZ: Asia/Seoul
         run: python run.py
 
