@@ -21,8 +21,17 @@ class Kbid:
 
     def _get(self, url, **kw):
         time.sleep(PAUSE)
-        r = self.s.get(urljoin(BASE, url), timeout=60, **kw)
-        r.raise_for_status()
+        # 서버가 가끔 연결을 끊는다 — 잠시 쉬었다가 다시 시도
+        for wait in (10, 30, 90, None):
+            try:
+                r = self.s.get(urljoin(BASE, url), timeout=60, **kw)
+                r.raise_for_status()
+                break
+            except (requests.ConnectionError, requests.Timeout) as e:
+                if wait is None:
+                    raise
+                print(f"  연결 오류, {wait}초 뒤 다시 시도: {e}")
+                time.sleep(wait)
         r.encoding = r.apparent_encoding if r.encoding in (None, "ISO-8859-1") else r.encoding
         return r
 

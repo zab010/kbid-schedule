@@ -5,6 +5,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import requests
+
 from kbid.address import file_text, find_site_addresses
 from kbid.build_site import build
 from kbid.dates import extract_dates
@@ -114,11 +116,19 @@ def main():
             info = cache.get(key)
             if info and "dates" not in info:
                 # 일정 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 일정을 채운다
-                det = kb.detail(row["bid_no"], row["bid_seq"])
-                body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
-                info["dates"] = extract_dates(det["fields"], body)
+                try:
+                    det = kb.detail(row["bid_no"], row["bid_seq"])
+                    body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
+                    info["dates"] = extract_dates(det["fields"], body)
+                except requests.RequestException as e:
+                    # 일정 없이 싣고 다음 실행 때 다시 채운다
+                    print(f"  {row.get('title', key)} → 상세 받기 실패, 일정은 다음에: {e}")
             if not info:
-                det = kb.detail(row["bid_no"], row["bid_seq"])
+                try:
+                    det = kb.detail(row["bid_no"], row["bid_seq"])
+                except requests.RequestException as e:
+                    print(f"  {row.get('title', key)} → 상세 받기 실패, 다음에 다시: {e}")
+                    continue
                 fd = det["fields"]
                 texts = []
                 found, src = site_addresses(kb, det, texts)
