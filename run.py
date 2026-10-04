@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -18,6 +19,22 @@ CACHE = ROOT / "data" / "cache.json"
 GEO_CACHE = ROOT / "data" / "geo.json"  # 주소 → 좌표 (Actions 캐시, 저장소엔 안 올림)
 DAYS = 31  # 오늘 포함 한 달
 KST = timezone(timedelta(hours=9))
+# 이 시간(분)이 지나면 새 공고 원문은 그만 받고 지금까지 모은 것으로 사이트를 만든다.
+# 못 받은 공고는 목록 정보만 싣고 다음 실행 때 이어서 받는다 (Actions 제한 시간 안에 반드시 끝나도록)
+BUDGET = float(os.environ.get("BUDGET_MIN", "0") or 0) * 60
+RETRY_MISS_DAYS = 2  # 주소를 못 찾은 공고는 이틀 뒤 다시 본다 (정정공고로 첨부가 바뀔 수 있음)
+START = time.monotonic()
+
+
+def over_budget():
+    return BUDGET > 0 and time.monotonic() - START > BUDGET
+
+
+def save_json(path, obj):
+    path.parent.mkdir(exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
 
 
 def load_env():
@@ -78,6 +95,8 @@ def add_coords(notices):
             continue
         a = n["addresses"][0]
         if a not in geo:
+            if over_budget():
+                continue
             try:
                 g = geocode(a)
             except Exception as e:
@@ -87,8 +106,10 @@ def add_coords(notices):
                 print(f"  좌표 못 찾음: {a}")
                 continue
             geo[a] = g
+            if len(geo) % 10 == 0:
+                save_json(GEO_CACHE, geo)
         n["geo"] = geo[a]
-    GEO_CACHE.write_text(json.dumps(geo, ensure_ascii=False), encoding="utf-8")
+    save_json(GEO_CACHE, geo)
     print(f"좌표: {sum(1 for n in notices if n.get('geo'))}건 / 주소 있는 공고 {sum(1 for n in notices if n['addresses'])}건")
 
 
@@ -101,6 +122,7 @@ def main():
     cache = json.loads(CACHE.read_text(encoding="utf-8")) if CACHE.exists() else {}
     today = datetime.now(KST).date()
     notices, seen = [], {}
+    fetched = skipped = 0
     for i in range(DAYS):
         day = today + timedelta(days=i)
         rows = [(tab, row) for tab, query in kb.tabs for row in kb.day_list(day, query)]
@@ -114,7 +136,9 @@ def main():
                     seen[key]["tabs"].append(tab)
                 continue
             info = cache.get(key)
-            if info and "dates" not in info:
+            if info and info.get("miss") and info["miss"] <= (today - timedelta(days=RETRY_MISS_DAYS)).isoformat():
+                info = None  # 주소를 못 찾았던 공고 — 며칠 지났으니 다시 본다
+            if info and "dates" not in info and not over_budget():
                 # 일정 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 일정을 채운다
                 try:
                     det = kb.detail(row["bid_no"], row["bid_seq"])
@@ -123,7 +147,11 @@ def main():
                 except requests.RequestException as e:
                     # 일정 없이 싣고 다음 실행 때 다시 채운다
                     print(f"  {row.get('title', key)} → 상세 받기 실패, 일정은 다음에: {e}")
-            if not info:
+            if not info and over_budget():
+                skipped += 1
+                info = {"no": "", "demand": "", "deadline": "", "open": "", "price": "", "addresses": [],
+                        "address_key": "", "address_file": "", "files": [], "dates": {}}
+            elif not info:
                 try:
                     det = kb.detail(row["bid_no"], row["bid_seq"])
                 except requests.RequestException as e:
@@ -145,19 +173,22 @@ def main():
                     "files": [f for f in det["files"] if attachment_order(f) < 9],
                     "dates": extract_dates(fd, *texts),
                 }
-                # 주소를 찾은 공고만 저장해 둔다 (못 찾은 건 다음 날 다시 시도 — 정정공고로 첨부가 바뀔 수 있음)
-                if found:
-                    cache[key] = info
+                # 못 찾은 공고도 저장해 두되 날짜를 적어 RETRY_MISS_DAYS 뒤 다시 본다
+                cache[key] = info if found else {**info, "miss": today.isoformat()}
+                fetched += 1
+                if fetched % 10 == 0:
+                    save_json(CACHE, cache)  # 중간에 끊겨도 받은 만큼은 다음 실행에 남도록
                 print(f"  {row['title'][:40]} → {info['addresses'] or '주소 못 찾음'}")
             seen[key] = {
                 "date": day.isoformat(), "tabs": [tab],
                 "title": row["title"], "agency": row["agency"], "kind": row["kind"],
-                "region": row["region"], **info,
+                "region": row["region"], **{k: v for k, v in info.items() if k != "miss"},
             }
             notices.append(seen[key])
 
-    CACHE.parent.mkdir(exist_ok=True)
-    CACHE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    save_json(CACHE, cache)
+    if skipped:
+        print(f"시간 제한으로 원문을 못 받은 공고 {skipped}건 — 목록 정보만 싣고 다음 실행 때 이어서 받음")
     add_coords(notices)
     data = {
         "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
