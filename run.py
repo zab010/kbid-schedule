@@ -11,7 +11,8 @@ import requests
 from kbid.address import file_text, find_site_addresses
 from kbid.build_site import build
 from kbid.dates import extract_dates
-from kbid.geo import geocode
+from kbid.geo import geocode, search_place
+from kbid.guess import guess, sido_of
 from kbid.scrape import Kbid
 
 ROOT = Path(__file__).resolve().parent
@@ -110,7 +111,38 @@ def add_coords(notices):
                 save_json(GEO_CACHE, geo)
         n["geo"] = geo[a]
     save_json(GEO_CACHE, geo)
-    print(f"좌표: {sum(1 for n in notices if n.get('geo'))}건 / 주소 있는 공고 {sum(1 for n in notices if n['addresses'])}건")
+    guess_places(notices, geo)
+    save_json(GEO_CACHE, geo)
+    print(f"좌표: {sum(1 for n in notices if n.get('geo'))}건 / 주소 있는 공고 {sum(1 for n in notices if n['addresses'])}건"
+          f" / 위치 추정 {sum(1 for n in notices if n.get('guess'))}건")
+
+
+def guess_places(notices, geo):
+    """원문 주소가 없는 공고는 제목·발주처·수요기관 이름으로 위치를 추정한다 (n['guess'], 찾으면 n['geo']).
+    모든 공고에 짧은 시·도 이름 n['area'] 를 단다 (사이트의 [대전] 표시·지역 버튼)."""
+    def search(q):
+        k = "?" + q  # 주소 좌표와 같은 파일에 '?검색어'로 저장, 못 찾은 것도 {} 로 남겨 다시 묻지 않는다
+        if k not in geo:
+            if over_budget():
+                return None
+            try:
+                geo[k] = search_place(q) or {}
+            except Exception as e:
+                print(f"  ! 위치 검색 실패 {q}: {e}")
+                return None
+        return geo[k] or None
+
+    for n in notices:
+        n.pop("guess", None)
+        if n["addresses"]:
+            n["area"] = sido_of(n["addresses"][0])
+            continue
+        g = guess(n, search)
+        if g:
+            n["guess"] = {"text": g["text"], "how": g["how"]}
+            if g["geo"]:
+                n["geo"] = g["geo"]
+        n["area"] = (g or {}).get("sido") or sido_of(n.get("region", ""))
 
 
 def main():
@@ -180,7 +212,7 @@ def main():
                     save_json(CACHE, cache)  # 중간에 끊겨도 받은 만큼은 다음 실행에 남도록
                 print(f"  {row['title'][:40]} → {info['addresses'] or '주소 못 찾음'}")
             seen[key] = {
-                "date": day.isoformat(), "tabs": [tab],
+                "key": key, "date": day.isoformat(), "tabs": [tab],
                 "title": row["title"], "agency": row["agency"], "kind": row["kind"],
                 "region": row["region"], **{k: v for k, v in info.items() if k != "miss"},
             }

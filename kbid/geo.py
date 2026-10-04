@@ -73,3 +73,21 @@ def _geocode_one(addr):
         if hit:
             return {"lat": hit[0], "lon": hit[1], "q": " ".join(words), "level": "area"}
     return None
+
+
+def search_place(q):
+    """기관·지명 검색 → {lat, lon, sido, text}. text 는 '경기도 고양시 일산서구 대화동 (킨텍스)' 꼴."""
+    from kbid.guess import sido_of
+    _wait()
+    r = requests.get("https://nominatim.openstreetmap.org/search", headers=UA, timeout=30,
+                     params={"q": q, "format": "json", "limit": 1, "countrycodes": "kr", "accept-language": "ko"})
+    r.raise_for_status()
+    j = r.json()
+    if not j:
+        return None
+    parts = [p.strip() for p in j[0]["display_name"].split(",")]
+    parts = [p for p in parts if p not in ("대한민국", "South Korea") and not re.fullmatch(r"\d{5}", p)]
+    area = parts[1:][::-1] if len(parts) > 1 else parts
+    text = " ".join(area) + (f" ({parts[0]})" if len(parts) > 1 else "")
+    sido = next((sido_of(p) for p in area if sido_of(p)), "")
+    return {"lat": float(j[0]["lat"]), "lon": float(j[0]["lon"]), "sido": sido, "text": text}

@@ -55,7 +55,15 @@ h1{font-size:22px;margin:0 0 4px}
 .day h2 .n{color:var(--sub);font-weight:400;font-size:13px}
 .tag{font-size:12px;border-radius:6px;padding:1px 7px;background:var(--today);color:var(--today-ink);font-weight:600}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px}
-.card .t{font-weight:600}
+.card .t{font-weight:600;display:flex;gap:8px;align-items:flex-start}
+.card .t .tt{flex:1;min-width:0}
+.card .rg{color:var(--accent);margin-right:4px;white-space:nowrap}
+.card.done{border-color:var(--today-ink);background:var(--soft)}
+.ck{flex:none;width:30px;height:30px;border:1.5px solid var(--line);border-radius:7px;background:var(--card);color:transparent;font-size:17px;line-height:1;cursor:pointer;padding:0}
+.ck:hover{border-color:var(--accent)}
+.card.done .ck{background:var(--today-ink);border-color:var(--today-ink);color:#fff}
+.addr .guess{display:block;margin-top:4px;color:var(--ink)}
+.addr .guess b{font-weight:600}
 .card .m{color:var(--sub);font-size:13px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 14px}
 .dates{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;margin-top:8px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:13px}
 .dates div{background:var(--card);padding:5px 8px;min-width:0}
@@ -102,6 +110,7 @@ h1{font-size:22px;margin:0 0 4px}
 .dayhead .n{color:var(--sub);font-weight:400;font-size:13px}
 /* 출발지·거리 */
 .origin[hidden]{display:none}
+[hidden]{display:none!important}
 .origin{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13px}
 .origin .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .origin input{flex:1 1 220px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px}
@@ -179,6 +188,7 @@ footer p{margin:0 0 6px}
   </div>
   <div class="chips" id="tabs" aria-label="맞춤스케줄러 탭"></div>
   <div class="chips" id="regions" aria-label="지역"></div>
+  <div class="chips"><button class="chip" id="ckonly" type="button" aria-pressed="false">✓ 체크한 공고만 0</button></div>
   <div class="origin" id="origin">
     <div class="row">
       <input id="og-q" placeholder="출발지 주소나 장소 (예: 대전시청, 유성구 대학로 99)" aria-label="출발지">
@@ -188,7 +198,7 @@ footer p{margin:0 0 6px}
     </div>
     <div class="st" id="og-st">출발지를 넣으면 공고 현장까지 거리와 자동차 예상 이동시간이 나옵니다. (이 브라우저에만 저장)</div>
     <div class="opts" id="og-opts" hidden>
-      <label>정렬 <select id="og-sort"><option value="time">마감 시간순</option><option value="near">가까운 순</option></select></label>
+      <label>정렬 <select id="og-sort"><option value="time">참가신청 마감순 → 가까운 순</option><option value="near">가까운 순만</option></select></label>
       <label>이동시간 <select id="og-max"><option value="0">전체</option><option value="30">30분 이내</option><option value="60">1시간 이내</option><option value="90">1시간 30분 이내</option><option value="120">2시간 이내</option><option value="180">3시간 이내</option></select></label>
     </div>
   </div>
@@ -261,13 +271,19 @@ function todayKST(){
 }
 const SIDO = [["전남광주","광주·전남"],["서울","서울"],["부산","부산"],["대구","대구"],["인천","인천"],["광주","광주"],["대전","대전"],["울산","울산"],["세종","세종"],["경기","경기"],["강원","강원"],["충청북","충북"],["충북","충북"],["충청남","충남"],["충남","충남"],["전라북","전북"],["전북","전북"],["전라남","전남"],["전남","전남"],["경상북","경북"],["경북","경북"],["경상남","경남"],["경남","경남"],["제주","제주"]];
 function region(n){
+  if(n.area) return n.area;  // 원문 주소 → 제목·기관 이름으로 추정한 위치 순 (수집 때 계산)
   for(const a of [(n.addresses||[])[0], n.region]){
     for(const [k,v] of SIDO) if((a||"").startsWith(k)) return v;
   }
   return "지역 미확인";  // 원문 주소도 없고 공고 지역도 '전국'인 경우
 }
 
-let DATA, TAB = "전체", REGION = "전체";
+let DATA, TAB = "전체", REGION = "전체", ONLY_CK = false;
+/* 공고 체크 표시 — 이 브라우저에만 저장 */
+let CHECKED = new Set();
+try{ CHECKED = new Set(JSON.parse(localStorage.getItem("kbid-checked") || "[]")); }catch(e){}
+const ckey = n => n.key || `${n.no}|${n.title}`;
+function saveChecked(){ try{ localStorage.setItem("kbid-checked", JSON.stringify([...CHECKED])); }catch(e){} }
 const inTab = n => TAB === "전체" || (n.tabs||[]).includes(TAB);
 function chips(id, names, counts, cur, pick){
   const box = document.getElementById(id);
@@ -287,7 +303,13 @@ function drawRegions(){
   DATA.notices.filter(inTab).forEach(n => { const r = region(n); counts[r] = (counts[r]||0)+1; counts["전체"]++; });
   const regs = ["전체", ...Object.keys(counts).filter(r => r!=="전체").sort((a,b)=>counts[b]-counts[a])];
   chips("regions", regs, counts, REGION, r => { REGION = r; drawRegions(); });
+  drawCkChip();
   draw();
+}
+function drawCkChip(){
+  const n = DATA.notices.filter(x => CHECKED.has(ckey(x))).length;
+  $("ckonly").textContent = `✓ 체크한 공고만 ${n}`;
+  $("ckonly").setAttribute("aria-pressed", ONLY_CK);
 }
 function render(data){
   DATA = data;
@@ -308,24 +330,43 @@ function draw(){
     if(!inTab(n)) return false;
     if(!withinMax(n)) return false;
     if(REGION !== "전체" && region(n) !== REGION) return false;
+    if(ONLY_CK && !CHECKED.has(ckey(n))) return false;
     if(!q) return true;
-    return [n.title,n.agency,n.no,(n.addresses||[]).join(" ")].join(" ").toLowerCase().includes(q);
+    return [n.title,n.agency,n.no,(n.addresses||[]).join(" "),n.guess?.text].join(" ").toLowerCase().includes(q);
   });
   document.getElementById("count").textContent = `${items.length}건`;
-  const byDay = {};
-  items.forEach(n => (byDay[n.date] ||= []).push(n));
-  if(ORIGIN && SORT === "near") Object.values(byDay).forEach(l => l.sort((a,b) => tripKey(a) - tripKey(b)));
-  const days = Object.keys(byDay).sort();
+  items.sort(byOrder);
   $("calview").hidden = VIEW !== "cal";
   $("list").hidden = VIEW !== "list";
-  if(VIEW === "cal"){ drawCal(byDay, days); return; }
+  if(VIEW === "cal"){
+    const byDay = {};
+    items.forEach(n => (byDay[n.date] ||= []).push(n));
+    drawCal(byDay, Object.keys(byDay).sort()); return;
+  }
+  // 목록: 참가신청 마감일(없으면 투찰마감일)별로 묶고, 이미 지난 날짜는 맨 뒤로
+  const now = nowKST(), groups = new Map();
+  items.forEach(n => { const d = applyKey(n).slice(0,10); if(!groups.has(d)) groups.set(d, []); groups.get(d).push(n); });
   const el = document.getElementById("list");
-  if(!days.length){ el.innerHTML = `<div class="empty">조건에 맞는 공고가 없습니다.</div>`; return; }
-  el.innerHTML = days.map(d => `
+  if(!groups.size){ el.innerHTML = `<div class="empty">조건에 맞는 공고가 없습니다.</div>`; return; }
+  el.innerHTML = `<div class="cal-legend" style="border:0;padding:0 0 6px">날짜 = 참가신청 마감일 (참가신청이 없는 공고는 투찰마감일) · 같은 날은 마감 시각 → 가까운 순</div>` +
+    [...groups].map(([d, l]) => `
     <section class="day">
-      <h2>${dayLabel(d)} ${d===today?'<span class="tag">오늘</span>':''}<span class="n">${byDay[d].length}건</span></h2>
-      ${byDay[d].map(card).join("")}
+      <h2>${/^\d{4}/.test(d) ? dayLabel(d) : "날짜 미확인"} ${d===today?'<span class="tag">오늘</span>':''}${applyKey(l[0]) < now ? '<span class="tag" style="background:var(--warn-bg);color:var(--warn)">마감 지남</span>' : ""}<span class="n">${l.length}건</span></h2>
+      ${l.map(card).join("")}
     </section>`).join("");
+}
+/* ── 정렬: 1) 참가신청 마감일시(없으면 투찰마감일시), 이미 지난 것은 뒤로 2) 출발지에서 가까운 순 ── */
+function nowKST(){ return new Date(Date.now() + 9*3600e3).toISOString().slice(0,16).replace("T"," "); }
+function applyKey(n){
+  const d = n.dates || {}, ok = v => /^\d{4}-\d\d-\d\d/.test(v || "");
+  const v = ok(d["참가신청마감일"]) ? d["참가신청마감일"] : ok(d["투찰마감일시"]) ? d["투찰마감일시"] : ok(n.deadline) ? n.deadline : "9999-12-31";
+  return v.length > 10 ? v.slice(0,16) : v + " 23:59";
+}
+function byOrder(a, b){
+  if(ORIGIN && SORT === "near") return tripKey(a) - tripKey(b) || applyKey(a).localeCompare(applyKey(b));
+  const now = nowKST(), ka = applyKey(a), kb = applyKey(b), pa = ka < now, pb = kb < now;
+  if(pa !== pb) return pa ? 1 : -1;
+  return (pa ? kb.localeCompare(ka) : ka.localeCompare(kb)) || (tripKey(a) - tripKey(b));
 }
 /* ── 달력 보기 ── */
 let VIEW = "cal", SEL = null, MONTH = null;  // MONTH = "YYYY-MM"
@@ -368,7 +409,7 @@ function drawCal(byDay, days){
       ${[..."일월화수목금토"].map((w,i)=>`<div class="wd ${i===0?"sun":i===6?"sat":""}">${w}</div>`).join("")}
       ${cells.join("")}
     </div>
-    <div class="cal-legend">날짜 = 투찰마감일 · 미확인 = 원문에서 현장 주소를 못 찾은 공고 · 날짜를 누르면 그날 공고가 나옵니다</div>`;
+    <div class="cal-legend">날짜 = 투찰마감일 · 그날 공고는 참가신청 마감순 → 가까운 순 · 미확인 = 원문에서 현장 주소를 못 찾은 공고 · 날짜를 누르면 그날 공고가 나옵니다</div>`;
   $("cal").onclick = e => {
     const b = e.target.closest("button"); if(!b || b.disabled) return;
     if(b.dataset.k){ MONTH = shiftMonth(MONTH, +b.dataset.k); draw(); }
@@ -427,7 +468,7 @@ function tripLine(n){
   if(!ORIGIN) return "";
   if(!n.geo) return `<div class="trip"><span class="s">현장 위치를 찾지 못해 거리를 계산할 수 없습니다</span></div>`;
   const line = haversine(ORIGIN, n.geo), t = TRIPS.get(gkey(n.geo));
-  const rough = n.geo.level !== "addr" ? ` · 대략 위치(${esc(n.geo.q)})` : "";
+  const rough = n.geo.level === "guess" ? ` · 추정 위치 기준` : n.geo.level !== "addr" ? ` · 대략 위치(${esc(n.geo.q)})` : "";
   const road = t ? `<b>자동차 약 ${fmtMin(t.dur)}</b><span>도로 ${fmtKm(t.dist/1000)}</span>`
                  : `<span class="s">${TRIP_STATE === "busy" ? "이동시간 계산 중…" : "이동시간 계산 못 함"}</span>`;
   return `<div class="trip">${road}<span class="s">직선 ${fmtKm(line)}${rough}</span></div>`;
@@ -507,7 +548,8 @@ function card(n){
   const addr = addrs.length
     ? `<div class="addr"><span class="k">현장 주소${n.address_key?` · 원문 「${esc(n.address_key)}」 항목`:""}${n.address_file?` (${esc(n.address_file)})`:""}</span>${
         addrs.length===1 ? esc(addrs[0]) : `<ol>${addrs.map(a=>`<li>${esc(a)}</li>`).join("")}</ol>`}</div>`
-    : `<div class="addr none"><span class="k">현장 주소</span>원문에서 현장 주소를 찾지 못했습니다${n.region?` (공고 지역: ${esc(n.region)})`:""}. 원문을 확인하세요.</div>`;
+    : `<div class="addr none"><span class="k">현장 주소</span>원문에서 현장 주소를 찾지 못했습니다${n.region?` (공고 지역: ${esc(n.region)})`:""}. 원문을 확인하세요.${
+        n.guess ? `<span class="guess">추정 위치: <b>${esc(n.guess.text)}</b> <span class="s">— 근거: ${esc(n.guess.how)}</span></span>` : ""}</div>`;
   const hm = s => (s||"").slice(5,16).replace("-","/");
   const dates = datesBox(n);
   const meta = [(DATA.tabs||[]).length > 1 && (n.tabs||[]).length && `탭 ${esc(n.tabs.join("·"))}`, n.agency && `공고 ${esc(n.agency)}`, n.demand && n.demand!==n.agency && `수요 ${esc(n.demand)}`,
@@ -515,9 +557,23 @@ function card(n){
                 !dates && n.deadline && `투찰마감 ${esc(hm(n.deadline))}`, !dates && n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
   const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
-  return `<article class="card"><div class="t">${esc(n.title)}</div>
+  const rg = region(n), title = rg === "지역 미확인" ? n.title : n.title.replace(/^\s*\[([^\]]+)\]\s*/, (m, b) => region({region: b}) === rg ? "" : m);
+  const done = CHECKED.has(ckey(n));
+  return `<article class="card${done ? " done" : ""}"><div class="t"><span class="tt">${rg !== "지역 미확인" ? `<span class="rg">[${esc(rg)}]</span>` : ""}${esc(title)}</span>
+    <button type="button" class="ck" data-ck="${esc(ckey(n))}" aria-pressed="${done}" aria-label="체크 표시" title="체크 표시">✓</button></div>
     <div class="m"><span>${meta}</span></div>${dates}${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
+
+document.addEventListener("click", e => {
+  const b = e.target.closest(".ck"); if(!b) return;
+  const k = b.dataset.ck, on = !CHECKED.has(k);
+  on ? CHECKED.add(k) : CHECKED.delete(k);
+  saveChecked();
+  b.setAttribute("aria-pressed", on); b.closest(".card").classList.toggle("done", on);
+  drawCkChip();
+  if(ONLY_CK && !on) draw();
+});
+$("ckonly").onclick = () => { ONLY_CK = !ONLY_CK; drawCkChip(); draw(); };
 
 /* ── 지금 갱신: GitHub Actions 실행 (토큰은 이 브라우저 localStorage에만) ── */
 const REPO = (() => {
