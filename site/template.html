@@ -60,7 +60,6 @@ h1{font-size:22px;margin:0 0 4px}
 .card .rg{color:var(--accent);margin-right:6px}
 .card.done{border-color:var(--today-ink);background:var(--soft)}
 .card.hold{border-color:var(--warn);background:var(--warn-bg)}
-.card.done.hold{border-color:var(--today-ink)}
 .marks{flex:none;display:flex;gap:6px}
 .mk{height:30px;border:1.5px solid var(--ink);border-radius:7px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;line-height:1;cursor:pointer;padding:0 8px}
 .mk.ck{width:30px;padding:0;font-size:17px;color:transparent}
@@ -200,9 +199,11 @@ footer p{margin:0 0 6px}
   </div>
   <div class="chips" id="tabs" aria-label="맞춤스케줄러 탭"></div>
   <div class="chips" id="regions" aria-label="지역"></div>
-  <div class="chips" id="markf" aria-label="체크·보류 모아 보기">
+  <div class="chips" id="markf" aria-label="체크·보류·미확인 분류">
+    <button class="chip" data-m="" type="button" aria-pressed="true">전체 0</button>
     <button class="chip" data-m="ck" type="button" aria-pressed="false">✓ 체크 0</button>
     <button class="chip" data-m="hold" type="button" aria-pressed="false">보류 0</button>
+    <button class="chip" data-m="un" type="button" aria-pressed="false">미확인 0</button>
   </div>
   <div class="origin" id="origin">
     <div class="row">
@@ -293,12 +294,17 @@ function region(n){
   return "지역 미확인";  // 원문 주소도 없고 공고 지역도 '전국'인 경우
 }
 
-let DATA, TAB = "전체", REGION = "전체", MFILTER = "";  // MFILTER: "" 전체 | "ck" 체크만 | "hold" 보류만
+let DATA, TAB = "전체", REGION = "전체", MFILTER = "";  // MFILTER: "" 전체 | "ck" 체크 | "hold" 보류 | "un" 미확인(체크도 보류도 아님)
 /* 공고 체크·보류 표시 — 이 브라우저에만 저장 */
-const MARK_KEYS = {ck: "kbid-checked", hold: "kbid-hold"}, MARK_NAME = {ck: "✓ 체크", hold: "보류"};
+const MARK_KEYS = {ck: "kbid-checked", hold: "kbid-hold"}, MARK_NAME = {"": "전체", ck: "✓ 체크", hold: "보류", un: "미확인"};
 const MARKS = {};
 for(const m in MARK_KEYS){ try{ MARKS[m] = new Set(JSON.parse(localStorage.getItem(MARK_KEYS[m]) || "[]")); }catch(e){ MARKS[m] = new Set(); } }
 const ckey = n => n.key || `${n.no}|${n.title}`;
+function inMark(n, m){
+  if(!m) return true;
+  const k = ckey(n);
+  return m === "un" ? !MARKS.ck.has(k) && !MARKS.hold.has(k) : MARKS[m].has(k);
+}
 function saveMark(m){ try{ localStorage.setItem(MARK_KEYS[m], JSON.stringify([...MARKS[m]])); }catch(e){} }
 const inTab = n => TAB === "전체" || (n.tabs||[]).includes(TAB);
 function chips(id, names, counts, cur, pick){
@@ -325,7 +331,7 @@ function drawRegions(){
 function drawMarkChips(){
   $("markf").querySelectorAll(".chip").forEach(c => {
     const m = c.dataset.m;
-    c.textContent = `${MARK_NAME[m]} ${DATA.notices.filter(x => MARKS[m].has(ckey(x))).length}`;
+    c.textContent = `${MARK_NAME[m]} ${DATA.notices.filter(x => inTab(x) && (REGION === "전체" || region(x) === REGION) && inMark(x, m)).length}`;
     c.setAttribute("aria-pressed", MFILTER === m);
   });
 }
@@ -349,7 +355,7 @@ function draw(){
     if(!inTab(n)) return false;
     if(!withinMax(n)) return false;
     if(REGION !== "전체" && region(n) !== REGION) return false;
-    if(MFILTER && !MARKS[MFILTER].has(ckey(n))) return false;
+    if(!inMark(n, MFILTER)) return false;
     if(!q) return true;
     return [n.title,n.agency,n.no,(n.addresses||[]).join(" "),n.guess?.text].join(" ").toLowerCase().includes(q);
   });
@@ -414,7 +420,7 @@ function drawCal(byDay, days){
     cells.push(`<${tag} class="${cls}" ${list.length?`data-d="${d}" type="button" aria-label="${dayLabel(d)} 공고 ${list.length}건"`:""}>
       <span class="dn ${w===0?"sun":w===6?"sat":""}">${dd}</span>
       ${list.length?`<span class="cnt">${list.length}건</span>`:""}
-      ${nf?`<span class="nf" title="현장 주소를 찾지 못한 공고 수">미확인 ${nf}</span>`:""}</${tag}>`);
+      ${nf?`<span class="nf" title="현장 주소를 찾지 못한 공고 수">주소없음 ${nf}</span>`:""}</${tag}>`);
   }
   while(cells.length % 7) cells.push(`<div class="cell out"></div>`);
   $("cal").innerHTML = `
@@ -428,7 +434,7 @@ function drawCal(byDay, days){
       ${[..."일월화수목금토"].map((w,i)=>`<div class="wd ${i===0?"sun":i===6?"sat":""}">${w}</div>`).join("")}
       ${cells.join("")}
     </div>
-    <div class="cal-legend">날짜 = 투찰마감일 · 그날 공고는 참가신청 마감순 → 가까운 순 · 미확인 = 원문에서 현장 주소를 못 찾은 공고 · 날짜를 누르면 그날 공고가 나옵니다</div>`;
+    <div class="cal-legend">날짜 = 투찰마감일 · 그날 공고는 참가신청 마감순 → 가까운 순 · 주소없음 = 원문에서 현장 주소를 못 찾은 공고 · 날짜를 누르면 그날 공고가 나옵니다</div>`;
   $("cal").onclick = e => {
     const b = e.target.closest("button"); if(!b || b.disabled) return;
     if(b.dataset.k){ MONTH = shiftMonth(MONTH, +b.dataset.k); draw(); }
@@ -587,13 +593,21 @@ document.addEventListener("click", e => {
   const m = b.dataset.m, k = b.dataset.k, on = !MARKS[m].has(k);
   on ? MARKS[m].add(k) : MARKS[m].delete(k);
   saveMark(m);
-  b.setAttribute("aria-pressed", on); b.closest(".card").classList.toggle(m === "ck" ? "done" : "hold", on);
+  const card = b.closest(".card");
+  b.setAttribute("aria-pressed", on); card.classList.toggle(m === "ck" ? "done" : "hold", on);
+  // 체크·보류·미확인은 셋 중 하나 — 한쪽을 켜면 다른 쪽은 끈다
+  const o = m === "ck" ? "hold" : "ck";
+  if(on && MARKS[o].delete(k)){
+    saveMark(o);
+    card.querySelector(`.mk[data-m="${o}"]`).setAttribute("aria-pressed", false);
+    card.classList.remove(o === "ck" ? "done" : "hold");
+  }
   drawMarkChips();
-  if(MFILTER === m && !on) draw();
+  if(MFILTER) draw();  // 분류 보기 중이면 바뀐 공고가 다른 분류로 옮겨 가므로 다시 그림
 });
 $("markf").onclick = e => {
   const c = e.target.closest(".chip"); if(!c) return;
-  MFILTER = MFILTER === c.dataset.m ? "" : c.dataset.m;
+  MFILTER = c.dataset.m;
   drawMarkChips(); draw();
 };
 
