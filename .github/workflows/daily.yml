@@ -53,10 +53,22 @@ jobs:
             data/geo.json
           key: notice-cache-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # 실행 도중 저장소에 다른 커밋(사이트 모양 수정 등)이 올라와도 밀려나지 않게:
+      # 최신 저장소로 맞춘 뒤 최신 템플릿으로 사이트를 다시 만들어 올린다 (공고 자료 data/ 는 저장소 밖이라 그대로)
       - name: 사이트 올리기
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs
-          git diff --cached --quiet || git commit -m "공고 갱신 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M')"
-          git push
+          for i in 1 2 3; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            python kbid/build_site.py data/notices.json
+            git add docs
+            git diff --cached --quiet && exit 0
+            git commit -q -m "공고 갱신 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M')"
+            git push -q origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1

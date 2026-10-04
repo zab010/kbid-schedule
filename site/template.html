@@ -137,6 +137,13 @@ h1{font-size:22px;margin:0 0 4px}
 .rf a{color:var(--accent)}
 #rf-msg{font-size:13px;color:var(--sub);margin-top:6px;min-height:1.2em}
 #rf-msg.ok{color:var(--today-ink)} #rf-msg.bad{color:#d33}
+#rf-msg:not(:empty){background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-top:10px;line-height:1.6}
+#rf-msg.run{border-color:var(--accent);color:var(--ink)}
+#rf-msg a{color:var(--accent);white-space:nowrap}
+#rf-msg .btn2{margin-left:6px;padding:4px 12px}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
 footer{margin-top:36px;border-top:1px solid var(--line);padding-top:14px;color:var(--sub);font-size:12px}
 footer h3{font-size:13px;color:var(--ink);margin:0 0 6px}
 footer p{margin:0 0 6px}
@@ -322,6 +329,7 @@ function render(data){
   if($("origin").hidden) ORIGIN = null;
   ogStatus();
   if(ORIGIN) computeTrips();
+  checkRuns();
 }
 function draw(){
   const q = document.getElementById("q").value.trim().toLowerCase();
@@ -604,12 +612,80 @@ $("rf-save").onclick = () => {
 };
 $("rf-clear").onclick = () => { local.set("kbid-gh-token", null); rfMsg("이 브라우저에서 토큰을 지웠습니다."); };
 
-let polling = null;
+/* ── 갱신 상태: 페이지를 열 때마다, 그리고 진행 중이면 주기적으로 GitHub에 직접 물어본다 ──
+   공개 저장소라 토큰 없이도 볼 수 있다 (토큰 없으면 1시간 60번 제한 → 75초마다, 토큰 있으면 20초마다) */
+let watchTimer = null, siteTimer = null, WAIT_FROM = 0;
+const PAGE_SIG = PAYLOAD.data.slice(0, 80);
+const kstHM = t => new Date(new Date(t).getTime() + 9*3600e3).toISOString().slice(11,16);
+const kstDay = t => { const d = new Date(new Date(t).getTime() + 9*3600e3).toISOString().slice(0,10); return d === todayKST() ? "" : dayLabel(d) + " "; };
+function ghGet(path){
+  const t = local.get("kbid-gh-token");
+  return fetch(`https://api.github.com/repos/${REPO}${path}`, {cache: "no-store", headers: {
+    "Accept": "application/vnd.github+json", ...(t ? {"Authorization": `Bearer ${t}`} : {})}});
+}
+function status(html, cls){ const m = $("rf-msg"); m.innerHTML = html; m.className = cls || ""; }
+const runLink = run => ` <a href="${esc(run ? run.html_url : ACTIONS_URL)}" target="_blank" rel="noopener">진행 기록 보기</a>`;
+function nextCheck(sec){
+  clearTimeout(watchTimer);
+  watchTimer = setTimeout(checkRuns, (sec ?? (local.get("kbid-gh-token") ? 20 : 75)) * 1000);
+}
+async function checkRuns(){
+  let run;
+  try{
+    const r = await ghGet(`/actions/workflows/${WORKFLOW}/runs?per_page=1`);
+    if(r.status === 403 || r.status === 429){ nextCheck(300); return; }  // 조회 횟수 제한 — 잠시 쉬었다가
+    run = (await r.json()).workflow_runs?.[0];
+  }catch(e){ nextCheck(60); return; }
+  if(!run) return;
+  const btn = $("rf-btn");
+  if(WAIT_FROM && new Date(run.created_at).getTime() < WAIT_FROM){
+    btn.disabled = true;
+    status(`⏳ 갱신을 요청했습니다. 실행이 시작되기를 기다리는 중… (${Math.floor((Date.now() - WAIT_FROM) / 60e3)}분)`);
+    nextCheck(15); return;
+  }
+  WAIT_FROM = 0;
+  const start = run.run_started_at || run.created_at;
+  if(run.status !== "completed"){
+    btn.disabled = true;
+    const min = Math.max(0, Math.floor((Date.now() - new Date(start)) / 60e3));
+    status(`<span class="spin"></span> <b>갱신 진행 중</b> · ${kstDay(start)}${kstHM(start)} 시작, ${min}분 지남 (보통 10~40분, 최대 100분).
+      이 화면을 닫거나 새로고침해도 갱신은 계속되고, 다시 열면 여기에 상태가 나옵니다.${runLink(run)}`, "run");
+    nextCheck(); return;
+  }
+  btn.disabled = false;
+  const done = run.updated_at;
+  const dataT = new Date(DATA.updated.replace(" ", "T") + ":00+09:00").getTime();
+  if(run.conclusion === "success"){
+    if(new Date(done).getTime() - dataT < 15*60e3){ status(`✓ 최신 상태 · 마지막 갱신 ${kstDay(done)}${kstHM(done)} 완료`, "ok"); return; }
+    status(`✓ 갱신 완료 (${kstDay(done)}${kstHM(done)}) · 사이트에 올리는 중… 1~2분 걸립니다.`, "ok");
+    watchSite(); return;
+  }
+  const why = {cancelled: "취소됨", timed_out: "시간 초과", failure: "실패"}[run.conclusion] || run.conclusion;
+  status(`✕ 마지막 갱신 ${why} (${kstDay(done)}${kstHM(done)}) · 지금 보이는 자료는 ${esc(DATA.updated)} 기준입니다.${runLink(run)}`, "bad");
+}
+/* 새 사이트 파일이 올라왔는지 직접 받아 보고, 올라왔으면 새로고침 버튼 */
+function watchSite(){
+  clearInterval(siteTimer);
+  const t0 = Date.now();
+  const look = async () => {
+    try{
+      const html = await (await fetch(location.pathname + "?v=" + Date.now(), {cache: "no-store"})).text();
+      if(html.includes('"data"') && !html.includes(PAGE_SIG)){
+        clearInterval(siteTimer);
+        status(`✓ 새 공고 자료가 올라왔습니다. <button class="btn2 solid" type="button" onclick="location.reload()">새로고침</button>`, "ok");
+        return;
+      }
+    }catch(e){}
+    if(Date.now() - t0 > 15*60e3){ clearInterval(siteTimer); status("✓ 갱신 완료 · 잠시 후 새로고침해 보세요.", "ok"); }
+  };
+  siteTimer = setInterval(look, 20000); look();
+}
+document.addEventListener("visibilitychange", () => { if(!document.hidden && DATA) checkRuns(); });
+
 $("rf-btn").onclick = async () => {
   if(!local.get("kbid-gh-token")){ showSetup(true); rfMsg("처음 한 번 GitHub 토큰을 저장해야 합니다."); return; }
   const btn = $("rf-btn"); btn.disabled = true;
   rfMsg("갱신 요청 중…");
-  const since = Date.now() - 60e3;
   try{
     const r = await gh(`/actions/workflows/${WORKFLOW}/dispatches`, {method: "POST", body: JSON.stringify({ref: "main"})});
     if(r.status === 401 || r.status === 403 || r.status === 404){
@@ -620,27 +696,9 @@ $("rf-btn").onclick = async () => {
   }catch(e){
     btn.disabled = false; rfMsg(`요청 실패 (${e.message}). 잠시 후 다시 시도하거나 Actions 화면에서 실행하세요.`, "bad"); return;
   }
-  rfMsg("요청했습니다. 실행이 시작되기를 기다리는 중…");
-  const t0 = Date.now();
-  clearInterval(polling);
-  polling = setInterval(async () => {
-    const min = Math.floor((Date.now() - t0) / 60e3);
-    try{
-      const r = await gh(`/actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&per_page=1`);
-      const run = (await r.json()).workflow_runs?.[0];
-      if(!run || new Date(run.created_at).getTime() < since){ rfMsg(`실행 대기 중… (${min}분)`); return; }
-      if(run.status !== "completed"){
-        rfMsg(`${run.status === "in_progress" ? "공고 수집 중" : "실행 대기 중"}… ${min}분 지남 (보통 10~20분 걸립니다. 이 창을 닫아도 계속 진행됩니다)`);
-        return;
-      }
-      clearInterval(polling); btn.disabled = false;
-      if(run.conclusion === "success"){
-        rfMsg("갱신 완료. 사이트 반영까지 1~2분 걸립니다 — 잠시 후 새로고침하세요.", "ok");
-      }else{
-        rfMsg(`실행이 실패했습니다 (${run.conclusion}). Actions 화면에서 기록을 확인하세요.`, "bad");
-      }
-    }catch(e){ /* 일시적 네트워크 오류는 다음 확인 때 다시 시도 */ }
-  }, 15000);
+  WAIT_FROM = Date.now() - 60e3;
+  status("⏳ 갱신을 요청했습니다. 실행이 시작되기를 기다리는 중…");
+  nextCheck(8);
 };
 </script>
 </body>
