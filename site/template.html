@@ -59,9 +59,14 @@ h1{font-size:22px;margin:0 0 4px}
 .card .t .tt{flex:1;min-width:0}
 .card .rg{color:var(--accent);margin-right:6px}
 .card.done{border-color:var(--today-ink);background:var(--soft)}
-.ck{flex:none;width:30px;height:30px;border:1.5px solid var(--line);border-radius:7px;background:var(--card);color:transparent;font-size:17px;line-height:1;cursor:pointer;padding:0}
-.ck:hover{border-color:var(--accent)}
-.card.done .ck{background:var(--today-ink);border-color:var(--today-ink);color:#fff}
+.card.hold{border-color:var(--warn);background:var(--warn-bg)}
+.card.done.hold{border-color:var(--today-ink)}
+.marks{flex:none;display:flex;gap:6px}
+.mk{height:30px;border:1.5px solid var(--ink);border-radius:7px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;line-height:1;cursor:pointer;padding:0 8px}
+.mk.ck{width:30px;padding:0;font-size:17px;color:transparent}
+.mk:hover{background:var(--soft)}
+.mk.ck[aria-pressed=true]{background:var(--today-ink);border-color:var(--today-ink);color:#fff}
+.mk.hd[aria-pressed=true]{background:var(--warn);border-color:var(--warn);color:var(--card)}
 .addr .guess{display:block;margin-top:4px;color:var(--ink)}
 .addr .guess b{font-weight:600}
 .card .m{color:var(--sub);font-size:13px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 14px}
@@ -195,7 +200,10 @@ footer p{margin:0 0 6px}
   </div>
   <div class="chips" id="tabs" aria-label="맞춤스케줄러 탭"></div>
   <div class="chips" id="regions" aria-label="지역"></div>
-  <div class="chips"><button class="chip" id="ckonly" type="button" aria-pressed="false">✓ 체크한 공고만 0</button></div>
+  <div class="chips" id="markf" aria-label="체크·보류 모아 보기">
+    <button class="chip" data-m="ck" type="button" aria-pressed="false">✓ 체크 0</button>
+    <button class="chip" data-m="hold" type="button" aria-pressed="false">보류 0</button>
+  </div>
   <div class="origin" id="origin">
     <div class="row">
       <input id="og-q" placeholder="출발지 주소나 장소 (예: 대전시청, 유성구 대학로 99)" aria-label="출발지">
@@ -285,12 +293,13 @@ function region(n){
   return "지역 미확인";  // 원문 주소도 없고 공고 지역도 '전국'인 경우
 }
 
-let DATA, TAB = "전체", REGION = "전체", ONLY_CK = false;
-/* 공고 체크 표시 — 이 브라우저에만 저장 */
-let CHECKED = new Set();
-try{ CHECKED = new Set(JSON.parse(localStorage.getItem("kbid-checked") || "[]")); }catch(e){}
+let DATA, TAB = "전체", REGION = "전체", MFILTER = "";  // MFILTER: "" 전체 | "ck" 체크만 | "hold" 보류만
+/* 공고 체크·보류 표시 — 이 브라우저에만 저장 */
+const MARK_KEYS = {ck: "kbid-checked", hold: "kbid-hold"}, MARK_NAME = {ck: "✓ 체크", hold: "보류"};
+const MARKS = {};
+for(const m in MARK_KEYS){ try{ MARKS[m] = new Set(JSON.parse(localStorage.getItem(MARK_KEYS[m]) || "[]")); }catch(e){ MARKS[m] = new Set(); } }
 const ckey = n => n.key || `${n.no}|${n.title}`;
-function saveChecked(){ try{ localStorage.setItem("kbid-checked", JSON.stringify([...CHECKED])); }catch(e){} }
+function saveMark(m){ try{ localStorage.setItem(MARK_KEYS[m], JSON.stringify([...MARKS[m]])); }catch(e){} }
 const inTab = n => TAB === "전체" || (n.tabs||[]).includes(TAB);
 function chips(id, names, counts, cur, pick){
   const box = document.getElementById(id);
@@ -310,13 +319,15 @@ function drawRegions(){
   DATA.notices.filter(inTab).forEach(n => { const r = region(n); counts[r] = (counts[r]||0)+1; counts["전체"]++; });
   const regs = ["전체", ...Object.keys(counts).filter(r => r!=="전체").sort((a,b)=>counts[b]-counts[a])];
   chips("regions", regs, counts, REGION, r => { REGION = r; drawRegions(); });
-  drawCkChip();
+  drawMarkChips();
   draw();
 }
-function drawCkChip(){
-  const n = DATA.notices.filter(x => CHECKED.has(ckey(x))).length;
-  $("ckonly").textContent = `✓ 체크한 공고만 ${n}`;
-  $("ckonly").setAttribute("aria-pressed", ONLY_CK);
+function drawMarkChips(){
+  $("markf").querySelectorAll(".chip").forEach(c => {
+    const m = c.dataset.m;
+    c.textContent = `${MARK_NAME[m]} ${DATA.notices.filter(x => MARKS[m].has(ckey(x))).length}`;
+    c.setAttribute("aria-pressed", MFILTER === m);
+  });
 }
 function render(data){
   DATA = data;
@@ -338,7 +349,7 @@ function draw(){
     if(!inTab(n)) return false;
     if(!withinMax(n)) return false;
     if(REGION !== "전체" && region(n) !== REGION) return false;
-    if(ONLY_CK && !CHECKED.has(ckey(n))) return false;
+    if(MFILTER && !MARKS[MFILTER].has(ckey(n))) return false;
     if(!q) return true;
     return [n.title,n.agency,n.no,(n.addresses||[]).join(" "),n.guess?.text].join(" ").toLowerCase().includes(q);
   });
@@ -565,22 +576,26 @@ function card(n){
                 !dates && n.deadline && `투찰마감 ${esc(hm(n.deadline))}`, !dates && n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
   const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
-  const done = CHECKED.has(ckey(n));
-  return `<article class="card${done ? " done" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
-    <button type="button" class="ck" data-ck="${esc(ckey(n))}" aria-pressed="${done}" aria-label="체크 표시" title="체크 표시">✓</button></div>
+  const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k);
+  return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
+    <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" aria-label="체크 표시" title="체크 표시">✓</button></span></div>
     <div class="m"><span>${meta}</span></div>${dates}${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
 document.addEventListener("click", e => {
-  const b = e.target.closest(".ck"); if(!b) return;
-  const k = b.dataset.ck, on = !CHECKED.has(k);
-  on ? CHECKED.add(k) : CHECKED.delete(k);
-  saveChecked();
-  b.setAttribute("aria-pressed", on); b.closest(".card").classList.toggle("done", on);
-  drawCkChip();
-  if(ONLY_CK && !on) draw();
+  const b = e.target.closest(".mk"); if(!b) return;
+  const m = b.dataset.m, k = b.dataset.k, on = !MARKS[m].has(k);
+  on ? MARKS[m].add(k) : MARKS[m].delete(k);
+  saveMark(m);
+  b.setAttribute("aria-pressed", on); b.closest(".card").classList.toggle(m === "ck" ? "done" : "hold", on);
+  drawMarkChips();
+  if(MFILTER === m && !on) draw();
 });
-$("ckonly").onclick = () => { ONLY_CK = !ONLY_CK; drawCkChip(); draw(); };
+$("markf").onclick = e => {
+  const c = e.target.closest(".chip"); if(!c) return;
+  MFILTER = MFILTER === c.dataset.m ? "" : c.dataset.m;
+  drawMarkChips(); draw();
+};
 
 /* ── 지금 갱신: GitHub Actions 실행 (토큰은 이 브라우저 localStorage에만) ── */
 const REPO = (() => {
