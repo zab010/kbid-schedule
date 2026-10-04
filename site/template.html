@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive">
-<title>입찰공고 현장 일정</title>
+<title>전자입찰 공고 분석</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='5' width='26' height='24' rx='4' fill='%232f6fdb'/%3E%3Crect x='3' y='5' width='26' height='7' rx='3' fill='%231d4fa8'/%3E%3Ccircle cx='16' cy='20' r='4' fill='%23fff'/%3E%3C/svg%3E">
 <style>
 :root{
@@ -62,7 +62,6 @@ h1{font-size:22px;margin:0 0 4px}
 .card.hold{border-color:var(--warn);background:var(--warn-bg)}
 .marks{flex:none;display:flex;gap:6px}
 .mk{height:30px;border:1.5px solid var(--ink);border-radius:7px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;line-height:1;cursor:pointer;padding:0 8px}
-.mk.ck{width:30px;padding:0;font-size:17px;color:transparent}
 .mk:hover{background:var(--soft)}
 .mk.ck[aria-pressed=true]{background:var(--today-ink);border-color:var(--today-ink);color:#fff}
 .mk.hd[aria-pressed=true]{background:var(--warn);border-color:var(--warn);color:var(--card)}
@@ -156,7 +155,7 @@ footer p{margin:0 0 6px}
 <body>
 <div id="lock">
   <form id="f" autocomplete="off">
-    <h1>입찰공고 현장 일정</h1>
+    <h1>전자입찰 공고 분석</h1>
     <div class="sub">비밀번호를 입력하세요</div>
     <input id="pw" type="password" inputmode="numeric" aria-label="비밀번호" autofocus>
     <div id="err"></div>
@@ -168,7 +167,7 @@ footer p{margin:0 0 6px}
 <div id="app" class="wrap">
   <div class="head">
     <div>
-      <h1>입찰공고 현장 일정</h1>
+      <h1>전자입찰 공고 분석</h1>
       <div class="sub" id="meta"></div>
     </div>
     <div style="display:flex;gap:6px">
@@ -201,7 +200,7 @@ footer p{margin:0 0 6px}
   <div class="chips" id="regions" aria-label="지역"></div>
   <div class="chips" id="markf" aria-label="체크·보류·미확인 분류">
     <button class="chip" data-m="" type="button" aria-pressed="true">전체 0</button>
-    <button class="chip" data-m="ck" type="button" aria-pressed="false">✓ 체크 0</button>
+    <button class="chip" data-m="ck" type="button" aria-pressed="false">체크 0</button>
     <button class="chip" data-m="hold" type="button" aria-pressed="false">보류 0</button>
     <button class="chip" data-m="un" type="button" aria-pressed="false">미확인 0</button>
   </div>
@@ -296,7 +295,7 @@ function region(n){
 
 let DATA, TAB = "전체", REGION = "전체", MFILTER = "";  // MFILTER: "" 전체 | "ck" 체크 | "hold" 보류 | "un" 미확인(체크도 보류도 아님)
 /* 공고 체크·보류 표시 — 이 브라우저에만 저장 */
-const MARK_KEYS = {ck: "kbid-checked", hold: "kbid-hold"}, MARK_NAME = {"": "전체", ck: "✓ 체크", hold: "보류", un: "미확인"};
+const MARK_KEYS = {ck: "kbid-checked", hold: "kbid-hold"}, MARK_NAME = {"": "전체", ck: "체크", hold: "보류", un: "미확인"};
 const MARKS = {};
 for(const m in MARK_KEYS){ try{ MARKS[m] = new Set(JSON.parse(localStorage.getItem(MARK_KEYS[m]) || "[]")); }catch(e){ MARKS[m] = new Set(); } }
 const ckey = n => n.key || `${n.no}|${n.title}`;
@@ -357,7 +356,7 @@ function draw(){
     if(REGION !== "전체" && region(n) !== REGION) return false;
     if(!inMark(n, MFILTER)) return false;
     if(!q) return true;
-    return [n.title,n.agency,n.no,(n.addresses||[]).join(" "),n.guess?.text].join(" ").toLowerCase().includes(q);
+    return [n.title,n.agency,n.demand,n.orderer,n.no,(n.addresses||[]).join(" "),n.guess?.text].join(" ").toLowerCase().includes(q);
   });
   document.getElementById("count").textContent = `${items.length}건`;
   items.sort(byOrder);
@@ -578,13 +577,14 @@ function card(n){
   const hm = s => (s||"").slice(5,16).replace("-","/");
   const dates = datesBox(n);
   const meta = [(DATA.tabs||[]).length > 1 && (n.tabs||[]).length && `탭 ${esc(n.tabs.join("·"))}`, n.agency && `공고 ${esc(n.agency)}`, n.demand && n.demand!==n.agency && `수요 ${esc(n.demand)}`,
+                n.orderer && n.orderer!==n.agency && n.orderer!==n.demand && `발주 ${esc(n.orderer)}`,
                 n.no && `공고번호 ${esc(n.no)}`,
                 !dates && n.deadline && `투찰마감 ${esc(hm(n.deadline))}`, !dates && n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
   const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
   const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k);
   return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
-    <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" aria-label="체크 표시" title="체크 표시">✓</button></span></div>
+    <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" title="체크 표시">체크</button></span></div>
     <div class="m"><span>${meta}</span></div>${dates}${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 

@@ -117,8 +117,13 @@ def add_coords(notices):
           f" / 위치 추정 {sum(1 for n in notices if n.get('guess'))}건")
 
 
+def orderer(fd):
+    """상세 화면의 발주기관 (국방 공고는 공고기관과 따로 적힘, 민간 공고는 '발주처')."""
+    return fd.get("발주기관") or fd.get("발주처", "")
+
+
 def guess_places(notices, geo):
-    """원문 주소가 없는 공고는 제목·발주처·수요기관 이름으로 위치를 추정한다 (n['guess'], 찾으면 n['geo']).
+    """원문 주소가 없는 공고는 제목·공고기관·수요기관·발주기관 이름으로 위치를 추정한다 (n['guess'], 찾으면 n['geo']).
     모든 공고에 짧은 시·도 이름 n['area'] 를 단다 (사이트의 [대전] 표시·지역 버튼)."""
     def search(q):
         k = "?" + q  # 주소 좌표와 같은 파일에 '?검색어'로 저장, 못 찾은 것도 {} 로 남겨 다시 묻지 않는다
@@ -170,18 +175,20 @@ def main():
             info = cache.get(key)
             if info and info.get("miss") and info["miss"] <= (today - timedelta(days=RETRY_MISS_DAYS)).isoformat():
                 info = None  # 주소를 못 찾았던 공고 — 며칠 지났으니 다시 본다
-            if info and "dates" not in info and not over_budget():
-                # 일정 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 일정을 채운다
+            if info and ("dates" not in info or "orderer" not in info) and not over_budget():
+                # 일정·발주기관 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 채운다
                 try:
                     det = kb.detail(row["bid_no"], row["bid_seq"])
-                    body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
-                    info["dates"] = extract_dates(det["fields"], body)
+                    info["orderer"] = orderer(det["fields"])
+                    if "dates" not in info:
+                        body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
+                        info["dates"] = extract_dates(det["fields"], body)
                 except requests.RequestException as e:
                     # 일정 없이 싣고 다음 실행 때 다시 채운다
                     print(f"  {row.get('title', key)} → 상세 받기 실패, 일정은 다음에: {e}")
             if not info and over_budget():
                 skipped += 1
-                info = {"no": "", "demand": "", "deadline": "", "open": "", "price": "", "addresses": [],
+                info = {"no": "", "demand": "", "orderer": "", "deadline": "", "open": "", "price": "", "addresses": [],
                         "address_key": "", "address_file": "", "files": [], "dates": {}}
             elif not info:
                 try:
@@ -196,6 +203,7 @@ def main():
                 info = {
                     "no": no.group(0) if no else fd.get("발주처 공고번호", ""),
                     "demand": fd.get("수요기관", ""),
+                    "orderer": orderer(fd),
                     "deadline": fd.get("투찰마감일시", fd.get("투찰마감일", "")),
                     "open": fd.get("입찰(개찰) 일시", fd.get("입찰(개찰)일", "")),
                     "price": fd.get("기초금액") or fd.get("추정가격", ""),

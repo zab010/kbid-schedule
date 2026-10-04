@@ -1,6 +1,7 @@
-"""원문에서 현장 주소를 못 찾은 공고의 위치를 공고 제목·발주처·수요기관 이름으로 추정한다.
+"""원문에서 현장 주소를 못 찾은 공고의 위치를 공고 제목·공고기관·수요기관·발주기관 이름으로 추정한다.
 
 순서: 해외 공고 → 제목·기관 이름 속 시·군 지명 → 기관 이름을 오픈스트리트맵에서 검색 → 시·도만.
+공고기관이 '조달청 ○○지방조달청'이면 이름은 현장과 무관하지만, 맡은 지역(○○)을 시·도 힌트로 쓴다.
 제목의 [경기] 같은 지역 표시나 KBID 목록 지역이 있으면 그와 어긋나는 결과는 버린다."""
 import re
 
@@ -89,13 +90,23 @@ def _sido_in(text):
     return ""
 
 
-def _texts(n):
-    """제목·수요기관·발주처. 계약만 맡은 조달청 지방청 이름(예: '조달청 인천지방조달청')은 현장과 무관해 뺀다."""
-    out = [n["title"]]
-    for name in (n.get("demand", ""), n["agency"]):
-        if name and not name.startswith("조달청"):
-            out.append(_ORG_JUNK.sub(" ", name).strip())
+def _orgs(n):
+    """(구분, 기관 이름) — 수요기관·발주기관·공고기관. 계약만 맡은 조달청 이름(예: '조달청 인천지방조달청')은 현장과 무관해 뺀다."""
+    out = []
+    for kind, name in (("수요기관", n.get("demand", "")), ("발주기관", n.get("orderer", "")), ("공고기관", n["agency"])):
+        if name and not name.startswith("조달청") and name not in [o for _, o in out]:
+            out.append((kind, name))
     return out
+
+
+def _texts(n):
+    return [n["title"]] + [_ORG_JUNK.sub(" ", name).strip() for _, name in _orgs(n)]
+
+
+def pps_sido(n):
+    """공고기관 '조달청 대전지방조달청' → '대전' (그 지방청이 맡은 지역)."""
+    m = re.match(r"조달청\s*(\S+?)지방조달청", n["agency"] or "")
+    return sido_of(m.group(1)) if m else ""
 
 
 def hint_sido(n):
@@ -135,14 +146,13 @@ def sigun_in(n, hint):
 
 
 def org_names(n):
+    """지도에서 찾아볼 (구분, 기관 이름)."""
     out = []
-    for name in (n.get("demand", ""), n["agency"]):
-        if not name or name.startswith("조달청"):
-            continue
+    for kind, name in _orgs(n):
         q = _ORG_JUNK.sub(" ", name).strip()
         q = re.sub(r"\s+", " ", q)
-        if len(q.replace(" ", "")) >= 3 and not _GENERIC.match(q) and not _NATIONWIDE.match(q) and q not in out:
-            out.append(q)
+        if len(q.replace(" ", "")) >= 3 and not _GENERIC.match(q) and not _NATIONWIDE.match(q) and q not in [o for _, o in out]:
+            out.append((kind, q))
     return out
 
 
@@ -160,14 +170,17 @@ def guess(n, search):
         hit = search(q)
         return {"text": q, "how": f"제목·기관 이름의 지명 '{sg[1][:-1]}'", "sido": sg[0],
                 "geo": {"lat": hit["lat"], "lon": hit["lon"], "q": q, "level": "guess"} if hit else None}
-    for org in org_names(n):
+    for kind, org in org_names(n):
         for q in ([f"{org} {SIDO_FULL[hint]}"] if hint else []) + [org]:
             hit = search(q)
             if hit and (not hint or hit["sido"] == hint):
-                return {"text": hit["text"], "how": f"기관 이름 '{org}' 위치", "sido": hit["sido"],
+                return {"text": hit["text"], "how": f"{kind} '{org}' 위치", "sido": hit["sido"],
                         "geo": {"lat": hit["lat"], "lon": hit["lon"], "q": hit["text"], "level": "guess"}}
     if hint:
         how = "제목의 지역 표시" if any(sido_of(b) for b in brackets(n["title"])) else (
             "제목·기관 이름" if _sido_in(blob) else "KBID 공고 지역")
         return {"text": SIDO_FULL[hint], "how": how, "sido": hint, "geo": None}
+    pps = pps_sido(n)  # 가장 약한 근거라 다른 단서를 거르는 데는 쓰지 않는다
+    if pps:
+        return {"text": SIDO_FULL[pps], "how": f"공고기관 '{n['agency']}' 관할 지역", "sido": pps, "geo": None}
     return None
