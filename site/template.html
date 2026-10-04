@@ -57,7 +57,6 @@ h1{font-size:22px;margin:0 0 4px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px}
 .card .t{font-weight:600;display:flex;gap:8px;align-items:flex-start}
 .card .t .tt{flex:1;min-width:0}
-.card .rg{color:var(--accent);margin-right:4px;white-space:nowrap}
 .card.done{border-color:var(--today-ink);background:var(--soft)}
 .ck{flex:none;width:30px;height:30px;border:1.5px solid var(--line);border-radius:7px;background:var(--card);color:transparent;font-size:17px;line-height:1;cursor:pointer;padding:0}
 .ck:hover{border-color:var(--accent)}
@@ -557,9 +556,8 @@ function card(n){
                 !dates && n.deadline && `투찰마감 ${esc(hm(n.deadline))}`, !dates && n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
   const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
-  const rg = region(n), title = rg === "지역 미확인" ? n.title : n.title.replace(/^\s*\[([^\]]+)\]\s*/, (m, b) => region({region: b}) === rg ? "" : m);
   const done = CHECKED.has(ckey(n));
-  return `<article class="card${done ? " done" : ""}"><div class="t"><span class="tt">${rg !== "지역 미확인" ? `<span class="rg">[${esc(rg)}]</span>` : ""}${esc(title)}</span>
+  return `<article class="card${done ? " done" : ""}"><div class="t"><span class="tt">${esc(n.title)}</span>
     <button type="button" class="ck" data-ck="${esc(ckey(n))}" aria-pressed="${done}" aria-label="체크 표시" title="체크 표시">✓</button></div>
     <div class="m"><span>${meta}</span></div>${dates}${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
