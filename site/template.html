@@ -57,6 +57,7 @@ h1{font-size:22px;margin:0 0 4px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px}
 .card .t{font-weight:600;display:flex;gap:8px;align-items:flex-start}
 .card .t .tt{flex:1;min-width:0}
+.card .rg{color:var(--accent);margin-right:6px}
 .card.done{border-color:var(--today-ink);background:var(--soft)}
 .ck{flex:none;width:30px;height:30px;border:1.5px solid var(--line);border-radius:7px;background:var(--card);color:transparent;font-size:17px;line-height:1;cursor:pointer;padding:0}
 .ck:hover{border-color:var(--accent)}
@@ -547,7 +548,7 @@ function card(n){
   const addr = addrs.length
     ? `<div class="addr"><span class="k">현장 주소${n.address_key?` · 원문 「${esc(n.address_key)}」 항목`:""}${n.address_file?` (${esc(n.address_file)})`:""}</span>${
         addrs.length===1 ? esc(addrs[0]) : `<ol>${addrs.map(a=>`<li>${esc(a)}</li>`).join("")}</ol>`}</div>`
-    : `<div class="addr none"><span class="k">현장 주소</span>원문에서 현장 주소를 찾지 못했습니다${n.region?` (공고 지역: ${esc(n.region)})`:""}. 원문을 확인하세요.${
+    : `<div class="addr none"><span class="k">현장 주소</span>원문에서 현장 주소를 찾지 못했습니다${n.region?` (공고 지역: [${esc(n.region)}])`:""}. 원문을 확인하세요.${
         n.guess ? `<span class="guess">추정 위치: <b>${esc(n.guess.text)}</b> <span class="s">— 근거: ${esc(n.guess.how)}</span></span>` : ""}</div>`;
   const hm = s => (s||"").slice(5,16).replace("-","/");
   const dates = datesBox(n);
@@ -557,7 +558,7 @@ function card(n){
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
   const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
   const done = CHECKED.has(ckey(n));
-  return `<article class="card${done ? " done" : ""}"><div class="t"><span class="tt">${esc(n.title)}</span>
+  return `<article class="card${done ? " done" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
     <button type="button" class="ck" data-ck="${esc(ckey(n))}" aria-pressed="${done}" aria-label="체크 표시" title="체크 표시">✓</button></div>
     <div class="m"><span>${meta}</span></div>${dates}${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
