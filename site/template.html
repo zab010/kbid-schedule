@@ -74,6 +74,11 @@ h1{font-size:22px;margin:0 0 4px}
 .dates .v{font-weight:600;white-space:nowrap}
 .dates .v.none{color:var(--sub);font-weight:400}
 .dates .main{background:var(--soft)}
+.rate{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;flex-wrap:wrap}
+.rate label{color:var(--sub)}
+.rate input{width:110px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:600;text-align:right}
+.rate input.bad{border-color:#d33}
+.rate .st{color:var(--sub);font-size:12px}
 @media (max-width:640px){.dates{grid-template-columns:repeat(2,minmax(0,1fr))}.dates div:last-child{grid-column:1/-1}}
 .addr{margin-top:8px;background:var(--soft);border-radius:8px;padding:8px 10px;font-size:14px}
 .addr .k{font-size:12px;color:var(--sub);display:block}
@@ -304,6 +309,10 @@ function inMark(n, m){
   const k = ckey(n);
   return m === "un" ? !MARKS.ck.has(k) && !MARKS.hold.has(k) : MARKS[m].has(k);
 }
+/* 수기 사정률 — 공고 키 → 입력값(%). 이 브라우저에만 저장 */
+let RATES = {};
+try{ RATES = JSON.parse(localStorage.getItem("kbid-rate") || "{}") || {}; }catch(e){}
+function saveRates(){ try{ localStorage.setItem("kbid-rate", JSON.stringify(RATES)); }catch(e){} }
 function saveMark(m){ try{ localStorage.setItem(MARK_KEYS[m], JSON.stringify([...MARKS[m]])); }catch(e){} }
 const inTab = n => TAB === "전체" || (n.tabs||[]).includes(TAB);
 function chips(id, names, counts, cur, pick){
@@ -585,7 +594,7 @@ function card(n){
   const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k);
   return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
     <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" title="체크 표시">체크</button></span></div>
-    <div class="m"><span>${meta}</span></div>${dates}${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
+    <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" placeholder="예: 99.875" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span>%</span><span class="st"></span></div>${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
 document.addEventListener("click", e => {
@@ -604,6 +613,16 @@ document.addEventListener("click", e => {
   }
   drawMarkChips();
   if(MFILTER) draw();  // 분류 보기 중이면 바뀐 공고가 다른 분류로 옮겨 가므로 다시 그림
+});
+document.addEventListener("input", e => {
+  const t = e.target; if(!t.classList.contains("rt")) return;
+  const v = t.value.trim().replace(/%$/, "").trim(), k = t.dataset.k, st = t.closest(".rate").querySelector(".st");
+  const ok = v === "" || /^\d{1,3}(\.\d+)?$/.test(v);
+  t.classList.toggle("bad", !ok);
+  if(!ok){ st.textContent = "숫자만 입력 (예: 99.875)"; return; }
+  v ? RATES[k] = v : delete RATES[k];
+  saveRates();
+  st.textContent = v ? "저장됨" : "";
 });
 $("markf").onclick = e => {
   const c = e.target.closest(".chip"); if(!c) return;
