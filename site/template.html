@@ -311,7 +311,7 @@ function inMark(n, m){
   const k = ckey(n);
   return m === "un" ? !MARKS.ck.has(k) && !MARKS.hold.has(k) : MARKS[m].has(k);
 }
-/* 수기 사정률 — 공고 키 → 입력값(%). 이 브라우저에만 저장 */
+/* 수기 업체사정률 — 공고 키 → 입력값(%). 이 브라우저에만 저장 */
 let RATES = {};
 try{ RATES = JSON.parse(localStorage.getItem("kbid-rate") || "{}") || {}; }catch(e){}
 function saveRates(){ try{ localStorage.setItem("kbid-rate", JSON.stringify(RATES)); }catch(e){} }
@@ -601,7 +601,7 @@ function card(n){
   const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k);
   return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
     <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" title="체크 표시">체크</button></span></div>
-    <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" placeholder="예: 99.875" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span class="u">%</span><label>투찰금액 <input class="rt amt" data-f="bid" data-k="${esc(k)}" type="text" inputmode="numeric" placeholder="예: 123,456,000" value="${esc(won(BIDS[k]))}" autocomplete="off"></label><span class="u">원</span><span class="st"></span></div>${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
+    <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>업체사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" placeholder="예: 99.875" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span class="u">%</span><label>투찰금액 <input class="rt amt" data-f="bid" data-k="${esc(k)}" type="text" inputmode="numeric" placeholder="예: 123,456,000" value="${esc(won(BIDS[k]))}" autocomplete="off"></label><span class="u">원</span><span class="st"></span></div>${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
 document.addEventListener("click", e => {
@@ -627,7 +627,7 @@ document.addEventListener("input", e => {
   const v = bid ? t.value.replace(/[\s,원]/g, "") : t.value.trim().replace(/%$/, "").trim();
   const ok = v === "" || (bid ? /^\d{1,15}$/.test(v) : /^\d{1,3}(\.\d+)?$/.test(v));
   t.classList.toggle("bad", !ok);
-  if(!ok){ st.textContent = bid ? "투찰금액은 숫자만 입력 (예: 123,456,000)" : "사정률은 숫자만 입력 (예: 99.875)"; return; }
+  if(!ok){ st.textContent = bid ? "투찰금액은 숫자만 입력 (예: 123,456,000)" : "업체사정률은 숫자만 입력 (예: 99.875)"; return; }
   const box = bid ? BIDS : RATES;
   v ? box[k] = v : delete box[k];
   bid ? saveBids() : saveRates();
