@@ -118,6 +118,17 @@ def g2b_link(no):
     return G2B_URL.format(m[1], m[2]) if m else ""
 
 
+def clean_origin(o):
+    """원문 글에 붙어 있던 글자가 주소에 섞인 경우(http://www.k-apt.go.kr로)를 다듬는다."""
+    if not o or not o.get("url"):
+        return {}
+    u = urlparse(o["url"])
+    host = re.match(r"[A-Za-z0-9.\-:]*", u.netloc)[0]
+    if host != u.netloc:
+        return {"url": f"{u.scheme}://{host}/", "kind": "site"} if "." in host else {}
+    return o
+
+
 def origin_link(soup, html):
     """발주처 쪽 공고 원문 주소 {"url", "kind"} — KBID 주소는 쓰지 않는다.
     kind "notice" = 그 공고 화면, "site" = 공고가 올라온 발주처(입찰) 사이트 첫 화면.
@@ -135,5 +146,5 @@ def origin_link(soup, html):
                 or re.search(r"download|fileUpload|FileDown|dnldFile", a["href"], re.I)):
             continue
         # 첫 번째 글자 있는 바깥 링크 = 공고기관 줄의 발주처 사이트
-        return {"url": a["href"], "kind": "notice" if u.query else "site"}
+        return clean_origin({"url": a["href"], "kind": "notice" if u.query else "site"})
     return {}

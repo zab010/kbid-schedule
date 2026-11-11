@@ -13,7 +13,7 @@ from kbid.build_site import build
 from kbid.dates import extract_dates
 from kbid.geo import geocode, search_place
 from kbid.guess import guess, sido_of
-from kbid.scrape import Kbid
+from kbid.scrape import Kbid, clean_origin
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / "data" / "cache.json"
@@ -223,6 +223,7 @@ def main():
                 if fetched % 10 == 0:
                     save_json(CACHE, cache)  # 중간에 끊겨도 받은 만큼은 다음 실행에 남도록
                 print(f"  {row['title'][:40]} → {info['addresses'] or '주소 못 찾음'}")
+            info["origin"] = clean_origin(info.get("origin"))
             seen[key] = {
                 "key": key, "date": day.isoformat(), "tabs": [tab],
                 "title": row["title"], "agency": row["agency"], "kind": row["kind"],
