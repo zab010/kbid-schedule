@@ -175,11 +175,14 @@ def main():
             info = cache.get(key)
             if info and info.get("miss") and info["miss"] <= (today - timedelta(days=RETRY_MISS_DAYS)).isoformat():
                 info = None  # 주소를 못 찾았던 공고 — 며칠 지났으니 다시 본다
-            if info and ("dates" not in info or "orderer" not in info) and not over_budget():
-                # 일정·발주기관 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 채운다
+            if info and ("dates" not in info or "orderer" not in info or "origin" not in info) and not over_budget():
+                # 일정·발주기관·원문 링크 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 채운다
                 try:
                     det = kb.detail(row["bid_no"], row["bid_seq"])
                     info["orderer"] = orderer(det["fields"])
+                    info["origin"] = det["origin"]
+                    if not info.get("files"):  # 나라장터 새 첨부 주소(downloadFile.do)도 원문 파일로 싣는다
+                        info["files"] = [f for f in det["files"] if attachment_order(f) < 9]
                     if "dates" not in info:
                         body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
                         info["dates"] = extract_dates(det["fields"], body)
@@ -189,7 +192,7 @@ def main():
             if not info and over_budget():
                 skipped += 1
                 info = {"no": "", "demand": "", "orderer": "", "deadline": "", "open": "", "price": "", "addresses": [],
-                        "address_key": "", "address_file": "", "files": [], "dates": {}}
+                        "address_key": "", "address_file": "", "files": [], "dates": {}, "origin": {}}
             elif not info:
                 try:
                     det = kb.detail(row["bid_no"], row["bid_seq"])
@@ -212,6 +215,7 @@ def main():
                     "address_file": src,
                     "files": [f for f in det["files"] if attachment_order(f) < 9],
                     "dates": extract_dates(fd, *texts),
+                    "origin": det["origin"],
                 }
                 # 못 찾은 공고도 저장해 두되 날짜를 적어 RETRY_MISS_DAYS 뒤 다시 본다
                 cache[key] = info if found else {**info, "miss": today.isoformat()}

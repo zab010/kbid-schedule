@@ -81,12 +81,6 @@ h1{font-size:22px;margin:0 0 4px}
 .rate .u{margin-right:10px}
 .rate input.bad{border:2px solid #d33;background:rgba(221,51,51,.12)}
 .rate .st{color:var(--sub);font-size:12px}
-.olink{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;flex-wrap:wrap}
-.olink label{display:flex;align-items:center;gap:6px;flex:1 1 260px;min-width:0;font-weight:700;color:var(--ink)}
-.olink input{flex:1 1 auto;min-width:0;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font-size:13px}
-.olink input.bad{border:2px solid #d33;background:rgba(221,51,51,.12)}
-.olink a{color:var(--accent);font-weight:700;white-space:nowrap}
-.olink .st{color:var(--sub);font-size:12px}
 @media (max-width:640px){.dates{grid-template-columns:repeat(2,minmax(0,1fr))}.dates div:last-child{grid-column:1/-1}}
 .addr{margin-top:8px;background:var(--soft);border-radius:8px;padding:8px 10px;font-size:14px}
 .addr .k{font-size:12px;color:var(--sub);display:block}
@@ -94,6 +88,7 @@ h1{font-size:22px;margin:0 0 4px}
 .addr ol{margin:2px 0 0;padding-left:20px}
 .links{margin-top:6px;font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
 .links a{color:var(--accent)}
+.links a.orig{font-weight:700;border:1px solid var(--accent);border-radius:7px;padding:2px 9px}
 .empty{color:var(--sub);text-align:center;padding:40px 0}
 /* 달력 */
 .viewbar{display:flex;gap:6px;margin:14px 0 4px}
@@ -325,11 +320,12 @@ function saveRates(){ try{ localStorage.setItem("kbid-rate", JSON.stringify(RATE
 let BIDS = {};
 try{ BIDS = JSON.parse(localStorage.getItem("kbid-bid") || "{}") || {}; }catch(e){}
 function saveBids(){ try{ localStorage.setItem("kbid-bid", JSON.stringify(BIDS)); }catch(e){} }
-/* 수기 공고 원문 링크 — 공고 키 → 주소(http/https). 이 브라우저에만 저장 */
-let OLINKS = {};
-try{ OLINKS = JSON.parse(localStorage.getItem("kbid-link") || "{}") || {}; }catch(e){}
-function saveLinks(){ try{ localStorage.setItem("kbid-link", JSON.stringify(OLINKS)); }catch(e){} }
-const okUrl = v => { try{ const u = new URL(v); return u.protocol === "https:" || u.protocol === "http:"; }catch(e){ return false; } };
+/* 발주처 공고 원문 주소 — 수집 때 넣은 n.origin, 아직 없으면 나라장터 공고번호로 만든다 */
+function originOf(n){
+  if(n.origin && n.origin.url) return n.origin;
+  const m = /^(R\d{2}[A-Z]{2}\d{8})-(\d{3})$/.exec(n.no || "");
+  return m ? {url:`https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=${m[1]}&bidPbancOrd=${m[2]}`, kind:"notice"} : null;
+}
 const won = v => v ? Number(v).toLocaleString("ko-KR") : "";
 function saveMark(m){ try{ localStorage.setItem(MARK_KEYS[m], JSON.stringify([...MARKS[m]])); }catch(e){} }
 const inTab = n => TAB === "전체" || (n.tabs||[]).includes(TAB);
@@ -608,11 +604,13 @@ function card(n){
                 n.no && `공고번호 ${esc(n.no)}`,
                 !dates && n.deadline && `투찰마감 ${esc(hm(n.deadline))}`, !dates && n.open && `개찰 ${esc(hm(n.open))}`, n.price && `금액 ${esc(n.price)}`,
                 n.kind && esc(n.kind)].filter(Boolean).join("</span><span>");
-  const links = (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
+  const og = originOf(n);
+  const links = (og ? `<a class="orig" href="${esc(og.url)}" target="_blank" rel="noopener noreferrer" title="${og.kind === "site" ? "이 공고가 올라온 발주처 입찰 사이트 (공고 화면 주소가 따로 없음)" : "발주처 사이트의 공고 원문 화면"}">${og.kind === "site" ? "발주처 사이트" : "공고 원문 보기"} ↗</a>` : "")
+              + (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
   const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k);
   return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
     <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" title="체크 표시">체크</button></span></div>
-    <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>업체사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span class="u">%</span><label>투찰금액 <input class="rt amt" data-f="bid" data-k="${esc(k)}" type="text" inputmode="numeric" value="${esc(won(BIDS[k]))}" autocomplete="off"></label><span class="u">원</span><span class="st"></span></div><div class="olink"><label>공고 원문 링크 <input class="ol" data-k="${esc(k)}" type="url" inputmode="url" value="${esc(OLINKS[k] || "")}" placeholder="https://… (나라장터 등 공고 원문 주소 붙여넣기)" autocomplete="off"></label><a class="go" href="${esc(OLINKS[k] || "#")}" target="_blank" rel="noopener noreferrer"${OLINKS[k] ? "" : " hidden"}>원문 열기 ↗</a><span class="st"></span></div>${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
+    <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>업체사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span class="u">%</span><label>투찰금액 <input class="rt amt" data-f="bid" data-k="${esc(k)}" type="text" inputmode="numeric" value="${esc(won(BIDS[k]))}" autocomplete="off"></label><span class="u">원</span><span class="st"></span></div>${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
 document.addEventListener("click", e => {
@@ -631,17 +629,6 @@ document.addEventListener("click", e => {
   }
   drawMarkChips();
   if(MFILTER) draw();  // 분류 보기 중이면 바뀐 공고가 다른 분류로 옮겨 가므로 다시 그림
-});
-document.addEventListener("input", e => {
-  const t = e.target; if(!t.classList.contains("ol")) return;
-  const k = t.dataset.k, row = t.closest(".olink"), st = row.querySelector(".st"), a = row.querySelector(".go");
-  const v = t.value.trim(), ok = v === "" || okUrl(v);
-  t.classList.toggle("bad", !ok);
-  if(!ok){ st.textContent = "https:// 로 시작하는 주소를 넣으세요"; a.hidden = true; return; }
-  v ? OLINKS[k] = v : delete OLINKS[k];
-  saveLinks();
-  a.hidden = !v; if(v) a.href = v;
-  st.textContent = v ? "저장됨" : "";
 });
 document.addEventListener("input", e => {
   const t = e.target; if(!t.classList.contains("rt")) return;

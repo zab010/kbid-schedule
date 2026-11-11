@@ -95,12 +95,45 @@ class Kbid:
             if re.search(r"\d|[가-힣]{2}", v) and k not in fields:
                 fields[k] = v
         files = [{"name": a.get_text(" ", strip=True), "url": a["href"]}
-                 for a in soup.select("#bid_inner a[href*='fileUpload.do'], #bid_inner a[href*='g2b.go.kr/fs']")]
+                 for a in soup.select("#bid_inner a[href*='fileUpload.do'], #bid_inner a[href*='g2b.go.kr/fs'], "
+                                      "#bid_inner a[href*='g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do']")]
         body = soup.select_one("div.gongo_detail")
-        return {"fields": fields, "files": files, "body_html": str(body) if body else ""}
+        return {"fields": fields, "files": files, "body_html": str(body) if body else "",
+                "origin": origin_link(soup, r.text)}
 
     def download(self, url):
         time.sleep(PAUSE)
         r = requests.get(url, headers={"User-Agent": UA}, timeout=120)
         r.raise_for_status()
         return r.content
+
+
+G2B_NO = re.compile(r"^(R\d{2}[A-Z]{2}\d{8})-(\d{3})$")
+G2B_URL = "https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo={}&bidPbancOrd={}"
+
+
+def g2b_link(no):
+    """나라장터 공고번호(R26BK01809536-000) → 나라장터 공고 상세 공개 주소."""
+    m = G2B_NO.match(no or "")
+    return G2B_URL.format(m[1], m[2]) if m else ""
+
+
+def origin_link(soup, html):
+    """발주처 쪽 공고 원문 주소 {"url", "kind"} — KBID 주소는 쓰지 않는다.
+    kind "notice" = 그 공고 화면, "site" = 공고가 올라온 발주처(입찰) 사이트 첫 화면.
+    1) '[공고원문 열기]' 링크(K-apt 등) 2) 나라장터 공고 → KBID '발주처 원문' 버튼과 같은 나라장터 주소
+    3) 공고기관 이름에 걸린 발주처 사이트 링크 (주소에 검색어가 있으면 그 공고 화면)"""
+    for a in soup.select("#bid_inner a[href^='http']"):
+        if "공고원문" in a.get_text() and "kbid" not in a["href"]:
+            return {"url": a["href"], "kind": "notice"}
+    m = re.search(r"G2b_Lnk1\('G2B_\w+?_Notice_([A-Z0-9]+)-(\d+)'", html)
+    if m:
+        return {"url": G2B_URL.format(m[1], m[2]), "kind": "notice"}
+    for a in soup.select("#bid_inner a[href^='http']"):
+        u = urlparse(a["href"])
+        if (not a.get_text(strip=True) or "kbid" in u.netloc
+                or re.search(r"download|fileUpload|FileDown|dnldFile", a["href"], re.I)):
+            continue
+        # 첫 번째 글자 있는 바깥 링크 = 공고기관 줄의 발주처 사이트
+        return {"url": a["href"], "kind": "notice" if u.query else "site"}
+    return {}
