@@ -65,6 +65,9 @@ h1{font-size:22px;margin:0 0 4px}
 .mk:hover{background:var(--soft)}
 .mk.ck[aria-pressed=true]{background:var(--today-ink);border-color:var(--today-ink);color:#fff}
 .mk.hd[aria-pressed=true]{background:var(--warn);border-color:var(--warn);color:var(--card)}
+.mk.ex[aria-pressed=true]{background:var(--sub);border-color:var(--sub);color:var(--card)}
+.card.ex{border-style:dashed;background:var(--bg)}
+.card.ex .tt,.card.ex .m{color:var(--sub);text-decoration:line-through}
 .addr .guess{display:block;margin-top:4px;color:var(--ink)}
 .addr .guess b{font-weight:600}
 .card .m{color:var(--sub);font-size:13px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 14px}
@@ -206,11 +209,12 @@ footer p{margin:0 0 6px}
   </div>
   <div class="chips" id="tabs" aria-label="맞춤스케줄러 탭"></div>
   <div class="chips" id="regions" aria-label="지역"></div>
-  <div class="chips" id="markf" aria-label="체크·보류·미확인 분류">
+  <div class="chips" id="markf" aria-label="체크·보류·미확인·제외 분류">
     <button class="chip" data-m="" type="button" aria-pressed="true">전체 0</button>
     <button class="chip" data-m="ck" type="button" aria-pressed="false">체크 0</button>
     <button class="chip" data-m="hold" type="button" aria-pressed="false">보류 0</button>
     <button class="chip" data-m="un" type="button" aria-pressed="false">미확인 0</button>
+    <button class="chip" data-m="ex" type="button" aria-pressed="false">제외 0</button>
   </div>
   <div class="origin" id="origin">
     <div class="row">
@@ -301,16 +305,17 @@ function region(n){
   return "지역 미확인";  // 원문 주소도 없고 공고 지역도 '전국'인 경우
 }
 
-let DATA, TAB = "전체", REGION = "전체", MFILTER = "";  // MFILTER: "" 전체 | "ck" 체크 | "hold" 보류 | "un" 미확인(체크도 보류도 아님)
-/* 공고 체크·보류 표시 — 이 브라우저에만 저장 */
-const MARK_KEYS = {ck: "kbid-checked", hold: "kbid-hold"}, MARK_NAME = {"": "전체", ck: "체크", hold: "보류", un: "미확인"};
+let DATA, TAB = "전체", REGION = "전체", MFILTER = "";  // MFILTER: "" 전체 | "ck" 체크 | "hold" 보류 | "un" 미확인(체크·보류·제외 아님) | "ex" 제외
+/* 공고 체크·보류·제외 표시 — 이 브라우저에만 저장 */
+const MARK_KEYS = {ck: "kbid-checked", hold: "kbid-hold", ex: "kbid-excluded"}, MARK_NAME = {"": "전체", ck: "체크", hold: "보류", un: "미확인", ex: "제외"};
+const MARK_CLS = {ck: "done", hold: "hold", ex: "ex"};
 const MARKS = {};
 for(const m in MARK_KEYS){ try{ MARKS[m] = new Set(JSON.parse(localStorage.getItem(MARK_KEYS[m]) || "[]")); }catch(e){ MARKS[m] = new Set(); } }
 const ckey = n => n.key || `${n.no}|${n.title}`;
 function inMark(n, m){
   if(!m) return true;
   const k = ckey(n);
-  return m === "un" ? !MARKS.ck.has(k) && !MARKS.hold.has(k) : MARKS[m].has(k);
+  return m === "un" ? !MARKS.ck.has(k) && !MARKS.hold.has(k) && !MARKS.ex.has(k) : MARKS[m].has(k);
 }
 /* 수기 업체사정률 — 공고 키 → 입력값(%). 이 브라우저에만 저장 */
 let RATES = {};
@@ -607,9 +612,9 @@ function card(n){
   const og = originOf(n);
   const links = (og ? `<a class="orig" href="${esc(og.url)}" target="_blank" rel="noopener noreferrer" title="${og.kind === "site" ? "이 공고가 올라온 발주처 입찰 사이트 (공고 화면 주소가 따로 없음)" : "발주처 사이트의 공고 원문 화면"}">${og.kind === "site" ? "발주처 사이트" : "공고 원문 보기"} ↗</a>` : "")
               + (n.files||[]).map(f => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">원문 ${esc(f.name)}</a>`).join("");
-  const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k);
-  return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
-    <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" title="체크 표시">체크</button></span></div>
+  const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k), ex = MARKS.ex.has(k);
+  return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}${ex ? " ex" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
+    <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" title="체크 표시">체크</button><button type="button" class="mk ex" data-m="ex" data-k="${esc(k)}" aria-pressed="${ex}" title="제외 표시">제외</button></span></div>
     <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>업체사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span class="u">%</span><label>투찰금액 <input class="rt amt" data-f="bid" data-k="${esc(k)}" type="text" inputmode="numeric" value="${esc(won(BIDS[k]))}" autocomplete="off"></label><span class="u">원</span><span class="st"></span></div>${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
@@ -619,13 +624,13 @@ document.addEventListener("click", e => {
   on ? MARKS[m].add(k) : MARKS[m].delete(k);
   saveMark(m);
   const card = b.closest(".card");
-  b.setAttribute("aria-pressed", on); card.classList.toggle(m === "ck" ? "done" : "hold", on);
-  // 체크·보류·미확인은 셋 중 하나 — 한쪽을 켜면 다른 쪽은 끈다
-  const o = m === "ck" ? "hold" : "ck";
-  if(on && MARKS[o].delete(k)){
+  b.setAttribute("aria-pressed", on); card.classList.toggle(MARK_CLS[m], on);
+  // 체크·보류·제외·미확인은 넷 중 하나 — 하나를 켜면 나머지는 끈다
+  if(on) for(const o in MARK_KEYS){
+    if(o === m || !MARKS[o].delete(k)) continue;
     saveMark(o);
     card.querySelector(`.mk[data-m="${o}"]`).setAttribute("aria-pressed", false);
-    card.classList.remove(o === "ck" ? "done" : "hold");
+    card.classList.remove(MARK_CLS[o]);
   }
   drawMarkChips();
   if(MFILTER) draw();  // 분류 보기 중이면 바뀐 공고가 다른 분류로 옮겨 가므로 다시 그림
