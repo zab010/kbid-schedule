@@ -136,6 +136,9 @@ h1{font-size:22px;margin:0 0 4px}
 .trip{margin-top:6px;font-size:13px;display:flex;gap:4px 12px;flex-wrap:wrap;align-items:baseline}
 .trip b{font-size:14px}
 .trip .s{color:var(--sub)}
+.nv{margin-top:6px;font-size:13px;display:flex;gap:8px;flex-wrap:wrap}
+.nv a{color:#fff;background:#03a94d;border-radius:7px;padding:3px 10px;text-decoration:none;font-weight:700}
+.nv a.sub{background:transparent;color:#03a94d;border:1px solid #03a94d}
 /* 지금 갱신 */
 .head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .head > div{min-width:0}
@@ -525,6 +528,37 @@ function tripLine(n){
                  : `<span class="s">${TRIP_STATE === "busy" ? "이동시간 계산 중…" : "이동시간 계산 못 함"}</span>`;
   return `<div class="trip">${road}<span class="s">직선 ${fmtKm(line)}${rough}</span></div>`;
 }
+/* ── 네이버 지도 바로가기 (API·키 없이 링크만 연다) ──
+   PC: map.naver.com 웹 (길찾기 주소의 좌표는 웹 메르카토르 EPSG:3857 미터값)
+   휴대폰: 네이버 지도 앱 주소(nmap://, 네이버 공식 URL Scheme) → 앱이 없으면 웹으로 */
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const NV_APP = encodeURIComponent(location.hostname || "kbid-schedule");
+const nvName = t => String(t || "").replace(/[,\/]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+const merc = g => [g.lon * 20037508.34 / 180, Math.log(Math.tan((90 + g.lat) * Math.PI / 360)) * 6378137];
+function nvLinks(n){
+  const q = nvName((n.addresses || [])[0] || (n.geo && n.geo.q) || (n.guess && n.guess.text) || "");
+  if(!q && !n.geo) return "";
+  let out = "";
+  if(ORIGIN && n.geo){
+    const pt = (g, name) => { const [x, y] = merc(g); return `${x.toFixed(1)},${y.toFixed(1)},${encodeURIComponent(nvName(name) || "위치")},,`; };
+    const web = `https://map.naver.com/p/directions/${pt(ORIGIN, ORIGIN.name)}/${pt(n.geo, q || "현장")}/-/car`;
+    const app = `nmap://route/car?slat=${ORIGIN.lat}&slng=${ORIGIN.lon}&sname=${encodeURIComponent(nvName(ORIGIN.name))}&dlat=${n.geo.lat}&dlng=${n.geo.lon}&dname=${encodeURIComponent(q || "현장")}&appname=${NV_APP}`;
+    out += `<a class="nvl" href="${esc(web)}" data-app="${esc(app)}" target="_blank" rel="noopener noreferrer" title="출발지에서 현장까지 네이버 지도 자동차 길찾기 (실시간 교통 반영)">네이버 지도 길찾기 ↗</a>`;
+  }
+  if(q){
+    const web = `https://map.naver.com/p/search/${encodeURIComponent(q)}`;
+    const app = `nmap://search?query=${encodeURIComponent(q)}&appname=${NV_APP}`;
+    out += `<a class="nvl${out ? " sub" : ""}" href="${esc(web)}" data-app="${esc(app)}" target="_blank" rel="noopener noreferrer" title="현장 주소를 네이버 지도에서 검색">네이버 지도에서 위치 보기 ↗</a>`;
+  }
+  return `<div class="nv">${out}</div>`;
+}
+document.addEventListener("click", e => {
+  const a = e.target.closest("a.nvl"); if(!a || !IS_MOBILE) return;
+  e.preventDefault();
+  const web = a.href, t = setTimeout(() => { if(!document.hidden) location.href = web; }, 1500);
+  document.addEventListener("visibilitychange", () => clearTimeout(t), {once: true});
+  location.href = a.dataset.app;
+});
 let TRIP_STATE = "";
 async function computeTrips(){
   TRIPS = new Map();
@@ -615,7 +649,7 @@ function card(n){
   const k = ckey(n), done = MARKS.ck.has(k), hold = MARKS.hold.has(k), ex = MARKS.ex.has(k);
   return `<article class="card${done ? " done" : ""}${hold ? " hold" : ""}${ex ? " ex" : ""}"><div class="t"><span class="tt">${n.region ? `<span class="rg">[${esc(n.region)}]</span>` : ""}${esc(n.title)}</span>
     <span class="marks"><button type="button" class="mk hd" data-m="hold" data-k="${esc(k)}" aria-pressed="${hold}" title="보류 표시">보류</button><button type="button" class="mk ck" data-m="ck" data-k="${esc(k)}" aria-pressed="${done}" title="체크 표시">체크</button><button type="button" class="mk ex" data-m="ex" data-k="${esc(k)}" aria-pressed="${ex}" title="제외 표시">제외</button></span></div>
-    <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>업체사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span class="u">%</span><label>투찰금액 <input class="rt amt" data-f="bid" data-k="${esc(k)}" type="text" inputmode="numeric" value="${esc(won(BIDS[k]))}" autocomplete="off"></label><span class="u">원</span><span class="st"></span></div>${addr}${tripLine(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
+    <div class="m"><span>${meta}</span></div>${dates}<div class="rate"><label>업체사정률 <input class="rt" data-k="${esc(k)}" type="text" inputmode="decimal" value="${esc(RATES[k] || "")}" autocomplete="off"></label><span class="u">%</span><label>투찰금액 <input class="rt amt" data-f="bid" data-k="${esc(k)}" type="text" inputmode="numeric" value="${esc(won(BIDS[k]))}" autocomplete="off"></label><span class="u">원</span><span class="st"></span></div>${addr}${tripLine(n)}${nvLinks(n)}${links?`<div class="links">${links}</div>`:""}</article>`;
 }
 
 document.addEventListener("click", e => {
