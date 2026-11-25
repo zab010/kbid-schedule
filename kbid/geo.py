@@ -47,12 +47,6 @@ def _photon(q):
     return lat, lon
 
 
-def query_of(addr):
-    """좌표 찾기에 넣을 깔끔한 주소 (사이트 브라우저에서 브이월드로 다시 찾을 때도 이 값을 쓴다)."""
-    parts = [p for p in addr.split("/") if re.search(r"\d", p)] or [addr]
-    return _clean(parts[-1])
-
-
 def geocode(addr):
     """좌표 {lat, lon, q, level}. level: 'addr' 주소 그대로 찾음, 'area' 동·읍·면이나 시·군·구까지만 찾음."""
     # '○○수련마을 주2동 / 중구 방아미로 131' 처럼 '/'로 이어진 경우 번호가 있는 쪽을 쓴다

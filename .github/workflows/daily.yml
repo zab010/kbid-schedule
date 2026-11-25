@@ -40,7 +40,6 @@ jobs:
           KBID_ID: ${{ secrets.KBID_ID }}
           KBID_PW: ${{ secrets.KBID_PW }}
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
-          VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
           TZ: Asia/Seoul
           BUDGET_MIN: "60"   # 60분이 넘으면 남은 공고는 다음 실행으로 넘기고 사이트를 만든다
         run: python run.py
@@ -59,7 +58,6 @@ jobs:
       - name: 사이트 올리기
         env:
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
-          VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

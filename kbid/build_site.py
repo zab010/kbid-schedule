@@ -21,8 +21,6 @@ def encrypt(obj, password):
 
 
 def build(data, password, out=ROOT / "docs" / "index.html"):
-    # 브이월드 키(사이트 주소에서만 쓰이게 발급)는 암호화된 자료 안에 넣는다. 없으면 사이트는 오픈스트리트맵 좌표만 쓴다
-    data = {**data, "vworld_key": os.environ.get("VWORLD_KEY", "")}
     tpl = (ROOT / "site" / "template.html").read_text(encoding="utf-8")
     html = tpl.replace("__PAYLOAD__", json.dumps(encrypt(data, password)))
     out.parent.mkdir(parents=True, exist_ok=True)
