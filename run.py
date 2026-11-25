@@ -11,7 +11,7 @@ import requests
 from kbid.address import file_text, find_site_addresses
 from kbid.build_site import build
 from kbid.dates import extract_dates
-from kbid.geo import geocode, search_place
+from kbid.geo import geocode, query_of, search_place
 from kbid.guess import guess, sido_of
 from kbid.scrape import Kbid, clean_origin
 
@@ -95,6 +95,7 @@ def add_coords(notices):
         if not n["addresses"]:
             continue
         a = n["addresses"][0]
+        n["vq"] = query_of(a)  # 사이트에서 브이월드로 먼저 찾을 주소 (수집 서버는 해외라 브이월드 접속이 막힘)
         if a not in geo:
             if over_budget():
                 continue

@@ -249,6 +249,7 @@ footer p{margin:0 0 6px}
     <p>3. 자동으로 발췌한 정보이므로 오류나 누락이 있을 수 있으며, 정확성·완전성을 보증하지 않습니다. 본 페이지의 정보를 이용해 발생한 결과에 대해 운영자는 책임을 지지 않으며, 입찰 참여 전 반드시 공고 원문을 직접 확인하시기 바랍니다.</p>
     <p>4. 본 페이지의 내용을 무단으로 복제·배포하거나 상업적으로 이용할 수 없습니다.</p>
     <p>5. 권리자 또는 정보 제공자가 게시 중단이나 삭제를 요청하면 지체 없이 해당 내용을 삭제합니다.</p>
+    <p>※ 현장·출발지 좌표: 브이월드(국토교통부 공간정보 오픈플랫폼) 주소 검색을 먼저 쓰고, 못 찾으면 오픈스트리트맵(© OpenStreetMap 기여자). 이동시간: OSRM 경로 계산.</p>
   </footer>
 </div>
 
@@ -377,6 +378,7 @@ function render(data){
   ogStatus();
   if(ORIGIN) computeTrips();
   checkRuns();
+  vwRefine();
 }
 function draw(){
   const q = document.getElementById("q").value.trim().toLowerCase();
@@ -497,7 +499,7 @@ function datesBox(n){
     `<div class="${k==="투찰마감일시"?"main":""}"><span class="k">${k}</span>${fmtDate(n.dates[k])}</div>`).join("")}</div>`;
 }
 /* ── 출발지에서 거리·이동시간 ──
-   현장 좌표(n.geo)는 수집 때 오픈스트리트맵 검색으로 찾아 둔 것. 도로 거리·시간은 OSRM(오픈스트리트맵) 경로 계산 — 교통상황 미반영 평균 추정 */
+   현장 좌표(n.geo)는 브라우저에서 브이월드로 먼저 찾고(vwRefine), 못 찾으면 수집 때 오픈스트리트맵으로 찾아 둔 것. 도로 거리·시간은 OSRM(오픈스트리트맵) 경로 계산 — 교통상황 미반영 평균 추정 */
 let ORIGIN = null, TRIPS = new Map(), SORT = "time", MAXMIN = 0;
 try{ ORIGIN = JSON.parse(localStorage.getItem("kbid-origin") || "null"); }catch(e){}
 function haversine(a, b){
@@ -595,8 +597,89 @@ function setOrigin(o){
   try{ o ? localStorage.setItem("kbid-origin", JSON.stringify(o)) : localStorage.removeItem("kbid-origin"); }catch(e){}
   ogStatus(); computeTrips().then(() => {}); if(!o) draw();
 }
-/* 출발지 주소 → 좌표: 오픈스트리트맵 검색 (가입·키 없음). Nominatim 이 못 찾으면 Photon */
+/* ── 브이월드(국토교통부 공간정보 오픈플랫폼) 좌표 찾기 ──
+   브이월드는 해외 접속을 막아 수집 서버(GitHub Actions, 미국)에서는 못 쓴다 → 보는 사람 브라우저(국내)에서 부른다.
+   키는 이 사이트 주소에서만 쓰이게 발급받은 것(DATA.vworld_key). 브라우저 요청 제한(CORS) 때문에 JSONP 로 부른다.
+   결과는 localStorage kbid-vw {주소: {lat, lon} | {miss: 시각}} 에 저장해 다시 묻지 않는다 (못 찾은 것은 7일 뒤 다시). */
+const VW_STORE = "kbid-vw";
+let VW = {};
+try{ VW = JSON.parse(localStorage.getItem(VW_STORE) || "{}") || {}; }catch(e){}
+function vwSave(){ try{ localStorage.setItem(VW_STORE, JSON.stringify(VW)); }catch(e){} }
+let vwSeq = 0;
+function vwCall(path, params){
+  return new Promise((ok, bad) => {
+    const cb = "__vw" + (++vwSeq) + "_" + Date.now();
+    const sc = document.createElement("script");
+    const done = () => { clearTimeout(t); delete window[cb]; sc.remove(); };
+    const t = setTimeout(() => { done(); bad(new Error("timeout")); }, 10000);
+    window[cb] = j => { done(); ok(j); };
+    sc.onerror = () => { done(); bad(new Error("load")); };
+    const q = new URLSearchParams({...params, key: DATA.vworld_key, domain: location.origin, format: "json", callback: cb});
+    sc.src = `https://api.vworld.kr/req/${path}?${q}`;
+    document.head.appendChild(sc);
+  });
+}
+/* 주소 → {lat, lon} | null. 도로명(○○로/길 + 번호)이면 도로명 먼저, 아니면 지번 먼저 */
+async function vwAddress(q){
+  const road = /(로|길)\s*\d/.test(q);
+  for(const type of road ? ["road", "parcel"] : ["parcel", "road"]){
+    const j = await vwCall("address", {service: "address", request: "getcoord", version: "2.0", crs: "epsg:4326", refine: "true", simple: "false", type, address: q});
+    const r = j && j.response;
+    if(r && r.status === "OK" && r.result && r.result.point) return {lat: +r.result.point.y, lon: +r.result.point.x};
+    if(r && r.status === "ERROR") throw new Error((r.error && r.error.text) || "vworld error");
+  }
+  return null;
+}
+/* 장소·건물 이름 → {name, lat, lon} | null (출발지 찾기용) */
+async function vwPlace(q){
+  const j = await vwCall("search", {service: "search", request: "search", version: "2.0", crs: "EPSG:4326", size: "1", page: "1", type: "place", query: q});
+  const r = j && j.response, it = r && r.status === "OK" && r.result && (r.result.items || [])[0];
+  if(r && r.status === "ERROR") throw new Error((r.error && r.error.text) || "vworld error");
+  if(!it) return null;
+  const a = it.address || {};
+  return {name: [it.title, a.road || a.parcel].filter(Boolean).join(" · "), lat: +it.point.y, lon: +it.point.x};
+}
+let VW_FAIL = "";
+async function vwRefine(){
+  if(!DATA.vworld_key) return;
+  const WEEK = 7 * 864e5;
+  const apply = () => {
+    let changed = false;
+    DATA.notices.forEach(n => {
+      const v = n.vq && VW[n.vq];
+      if(v && v.lat != null && !(n.geo && n.geo.src === "vworld")){
+        n.osm = n.osm || n.geo || null;
+        n.geo = {lat: v.lat, lon: v.lon, q: n.vq, level: "addr", src: "vworld"};
+        changed = true;
+      }
+    });
+    return changed;
+  };
+  let changed = apply();
+  const todo = [...new Set(DATA.notices.map(n => n.vq).filter(q => q && !(VW[q] && (VW[q].lat != null || Date.now() - VW[q].miss < WEEK))))];
+  for(const q of todo){
+    try{
+      const g = await vwAddress(q);
+      VW[q] = g || {miss: Date.now()};
+    }catch(e){ VW_FAIL = String(e.message || e); break; }  // 키 오류·접속 실패면 그만두고 오픈스트리트맵 좌표를 그대로 쓴다
+  }
+  if(todo.length) vwSave();
+  if(apply() || changed){
+    $("origin").hidden = !DATA.notices.some(n => n.geo);
+    if(ORIGIN) computeTrips(); else draw();
+  }
+  if(VW_FAIL) console.warn("브이월드 좌표 찾기 실패 → 오픈스트리트맵 좌표 사용:", VW_FAIL);
+}
+/* 출발지 주소 → 좌표: 브이월드(주소 → 장소 이름) 먼저, 못 찾으면 오픈스트리트맵 (Nominatim → Photon) */
 async function findPlace(q){
+  if(DATA.vworld_key){
+    try{
+      const a = await vwAddress(q);
+      if(a) return {name: q, ...a};
+      const p = await vwPlace(q);
+      if(p) return p;
+    }catch(e){}
+  }
   const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&accept-language=ko&q=${encodeURIComponent(q)}`);
   const j = await r.json();
   if(j[0]) return {name: j[0].display_name.split(",").slice(0,3).join(",").trim(), lat: +j[0].lat, lon: +j[0].lon};
