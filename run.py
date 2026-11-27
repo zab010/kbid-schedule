@@ -122,6 +122,24 @@ def orderer(fd):
     return fd.get("발주기관") or fd.get("발주처", "")
 
 
+def refresh(info, det):
+    """저장해 둔 공고에 새로 받은 KBID 상세 화면 내용을 덮어쓴다 (info 를 고쳐 캐시에도 남는다)."""
+    fd = det["fields"]
+    info["orderer"] = orderer(fd) or info.get("orderer", "")
+    info["origin"] = det["origin"] or info.get("origin", {})
+    info["icons"], info["info"] = det["icons"], det["info"]
+    info["demand"] = fd.get("수요기관") or info.get("demand", "")
+    info["deadline"] = fd.get("투찰마감일시", fd.get("투찰마감일")) or info.get("deadline", "")
+    info["open"] = fd.get("입찰(개찰) 일시", fd.get("입찰(개찰)일")) or info.get("open", "")
+    info["price"] = fd.get("기초금액") or fd.get("추정가격") or info.get("price", "")
+    if not info.get("files"):  # 나라장터 새 첨부 주소(downloadFile.do)도 원문 파일로 싣는다
+        info["files"] = [f for f in det["files"] if attachment_order(f) < 9]
+    # 일정: 새로 받은 상세·본문에 있으면 그것(정정 반영), 없으면 전에 첨부에서 찾아 둔 것
+    body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
+    new, old = extract_dates(fd, body), info.get("dates") or {}
+    info["dates"] = {k: new.get(k) or old.get(k, "") for k in {**old, **new}}
+
+
 def guess_places(notices, geo):
     """원문 주소가 없는 공고는 제목·공고기관·수요기관·발주기관 이름으로 위치를 추정한다 (n['guess'], 찾으면 n['geo']).
     모든 공고에 짧은 시·도 이름 n['area'] 를 단다 (사이트의 [대전] 표시·지역 버튼)."""
@@ -175,24 +193,18 @@ def main():
             info = cache.get(key)
             if info and info.get("miss") and info["miss"] <= (today - timedelta(days=RETRY_MISS_DAYS)).isoformat():
                 info = None  # 주소를 못 찾았던 공고 — 며칠 지났으니 다시 본다
-            if info and ("dates" not in info or "orderer" not in info or "origin" not in info) and not over_budget():
-                # 일정·발주기관·원문 링크 항목이 생기기 전에 저장한 공고 — 상세 화면만 다시 받아 채운다
+            if info and not over_budget():
+                # 저장해 둔 공고도 KBID 상세 화면은 매번 다시 받는다 — 아이콘(정정·결과 등)·기초금액·일정이 바뀌기 때문.
+                # 현장 주소·첨부는 저장해 둔 것을 그대로 쓴다
                 try:
-                    det = kb.detail(row["bid_no"], row["bid_seq"])
-                    info["orderer"] = orderer(det["fields"])
-                    info["origin"] = det["origin"]
-                    if not info.get("files"):  # 나라장터 새 첨부 주소(downloadFile.do)도 원문 파일로 싣는다
-                        info["files"] = [f for f in det["files"] if attachment_order(f) < 9]
-                    if "dates" not in info:
-                        body = file_text("body.html", det["body_html"].encode()) if det["body_html"] else ""
-                        info["dates"] = extract_dates(det["fields"], body)
+                    refresh(info, kb.detail(row["bid_no"], row["bid_seq"]))
                 except requests.RequestException as e:
-                    # 일정 없이 싣고 다음 실행 때 다시 채운다
-                    print(f"  {row.get('title', key)} → 상세 받기 실패, 일정은 다음에: {e}")
+                    print(f"  {row.get('title', key)} → 상세 받기 실패, 저장해 둔 내용으로 싣는다: {e}")
             if not info and over_budget():
                 skipped += 1
                 info = {"no": "", "demand": "", "orderer": "", "deadline": "", "open": "", "price": "", "addresses": [],
-                        "address_key": "", "address_file": "", "files": [], "dates": {}, "origin": {}}
+                        "address_key": "", "address_file": "", "files": [], "dates": {}, "origin": {},
+                        "icons": [], "info": []}
             elif not info:
                 try:
                     det = kb.detail(row["bid_no"], row["bid_seq"])
@@ -216,6 +228,7 @@ def main():
                     "files": [f for f in det["files"] if attachment_order(f) < 9],
                     "dates": extract_dates(fd, *texts),
                     "origin": det["origin"],
+                    "icons": det["icons"], "info": det["info"],
                 }
                 # 못 찾은 공고도 저장해 두되 날짜를 적어 RETRY_MISS_DAYS 뒤 다시 본다
                 cache[key] = info if found else {**info, "miss": today.isoformat()}
@@ -229,6 +242,10 @@ def main():
                 "title": row["title"], "agency": row["agency"], "kind": row["kind"],
                 "region": row["region"], **{k: v for k, v in info.items() if k != "miss"},
             }
+            # 아이콘은 상세 화면 것(전자·공동도급·A값 등 전부)에 목록 화면 것(현설필 등)을 더한다
+            ic = list(info.get("icons") or [])
+            ic += [i for i in row.get("icons", []) if all(i["t"] != j["t"] for j in ic)]
+            seen[key]["icons"] = ic
             notices.append(seen[key])
 
     save_json(CACHE, cache)

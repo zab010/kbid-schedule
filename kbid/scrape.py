@@ -74,6 +74,7 @@ class Kbid:
                 cell = lambda c: (li.select_one(c).get_text(" ", strip=True) if li.select_one(c) else "")
                 out.append({
                     "bid_no": q["BidNo"][0], "bid_seq": q.get("BidNoSeq", ["0"])[0],
+                    "icons": icons_of(li.select(".ln-subject-ico .ico-bid")),
                     "title": a.get_text(" ", strip=True),
                     "agency": cell(".ln-org1"), "kind": cell(".ln-org"), "region": cell(".ln-area").strip("[]"),
                 })
@@ -85,7 +86,7 @@ class Kbid:
     def detail(self, bid_no, bid_seq):
         r = self._get(f"/mypage/mypage_bid_contents.htm?BidNo={bid_no}&BidNoSeq={bid_seq}&chkCode=Y")
         soup = BeautifulSoup(r.text, "html.parser")
-        fields = {}
+        fields, info = {}, []
         for th in soup.select("#bid_inner th"):
             td = th.find_next_sibling("td")
             if not td:
@@ -94,11 +95,14 @@ class Kbid:
             v = re.sub(r"\s*투찰하기\s*$", "", td.get_text(" ", strip=True))
             if re.search(r"\d|[가-힣]{2}", v) and k not in fields:
                 fields[k] = v
+            if k not in SKIP_INFO and not any(k == a for a, _ in info) and re.search(r"\d|[가-힣]{2}", v):
+                info.append([k, re.sub(r"\s*(내용보기|투찰하기)\s*", " ", v).strip()])
         files = [{"name": a.get_text(" ", strip=True), "url": a["href"]}
                  for a in soup.select("#bid_inner a[href*='fileUpload.do'], #bid_inner a[href*='g2b.go.kr/fs'], "
                                       "#bid_inner a[href*='g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do']")]
         body = soup.select_one("div.gongo_detail")
         return {"fields": fields, "files": files, "body_html": str(body) if body else "",
+                "icons": icons_of(soup.select("td.h_tit .ico-bid")), "info": info,
                 "origin": origin_link(soup, r.text)}
 
     def download(self, url):
@@ -106,6 +110,23 @@ class Kbid:
         r = requests.get(url, headers={"User-Agent": UA}, timeout=120)
         r.raise_for_status()
         return r.content
+
+
+# 상세 화면 맨 위의 KBID 낙찰 통계 칸(내 사정률 등)·다른 칸에서 따로 쓰는 항목은 'KBID 공고 정보'에 넣지 않는다
+SKIP_INFO = {"기간", "총건수", "낙찰횟수", "사정률", "예상예정가격", "투찰금액", "첨부문서", "담당자", "연락처",
+             "투찰마감일", "입찰(개찰)일", "투찰마감일시", "입찰(개찰) 일시", "입찰개시일", "참가등록마감일",
+             "현장설명일", "참가신청마감일", "발주처 공고번호", "공고기관", "수요기관", "지역"}
+
+
+def icons_of(spans):
+    """공고명 앞 KBID 아이콘 (<span class="ico-bid kind5" title="전자">전</span>) → [{"t": "전", "n": "전자", "c": 5}]."""
+    out = []
+    for sp in spans:
+        t = sp.get_text(strip=True)
+        m = re.search(r"kind(\d+)", " ".join(sp.get("class", [])))
+        if t and not any(o["t"] == t for o in out):
+            out.append({"t": t, "n": sp.get("title", t), "c": int(m[1]) if m else 0})
+    return out
 
 
 G2B_NO = re.compile(r"^(R\d{2}[A-Z]{2}\d{8})-(\d{3})$")
